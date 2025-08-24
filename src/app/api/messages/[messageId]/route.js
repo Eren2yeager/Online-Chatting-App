@@ -15,7 +15,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { messageId } = params;
+    const { messageId } = await params;
     const { deleteFor = 'me' } = await request.json();
 
     // Find the message

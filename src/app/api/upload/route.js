@@ -45,20 +45,6 @@ export async function POST(request) {
           {
             resource_type: 'video',
             folder: 'chatapp/videos',
-            // You can add more video-specific options here if needed
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        ).end(buffer);
-      });
-    } else if (type === 'image') {
-      result = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          {
-            resource_type: 'image',
-            folder: 'chatapp/images',
             transformation: [
               { width: 800, height: 800, crop: 'limit' },
               { quality: 'auto' }
@@ -70,8 +56,22 @@ export async function POST(request) {
           }
         ).end(buffer);
       });
+    } else if (type === 'document') {
+      result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            resource_type: 'raw',
+            folder: 'chatapp/documents',
+            format: 'auto',
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(buffer);
+      });
     } else {
-      // fallback: treat as image
+      // Default: treat as image
       result = await new Promise((resolve, reject) => {
         cloudinary.uploader.upload_stream(
           {

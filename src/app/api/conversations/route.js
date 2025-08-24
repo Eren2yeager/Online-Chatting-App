@@ -23,27 +23,36 @@ export async function GET() {
     .sort({ updatedAt: -1 });
 
     // Transform data to match expected format
-    const transformedConversations = conversations.map(conv => ({
-      id: conv._id.toString(),
-      name: conv.name,
-      isGroup: conv.isGroup,
-      participants: conv.participants.map(p => ({
-        user: {
-          id: p._id.toString(),
-          name: p.name,
-          email: p.email,
-          image: p.image
-        }
-      })),
-      lastMessage: conv.lastMessage ? {
-        content: conv.lastMessage.content || '',
-        type: conv.lastMessage.type || 'text',
-        senderName: conv.lastMessage.senderId?.name || 'Unknown',
-        createdAt: conv.lastMessage.createdAt || conv.updatedAt
-      } : null,
-      createdAt: conv.createdAt,
-      updatedAt: conv.updatedAt
-    }));
+    const transformedConversations = conversations.map(conv => {
+      // For 1-on-1 chats, get the other user's name
+      let conversationName = conv.name;
+      if (!conv.isGroup && conv.participants.length === 2) {
+        const otherUser = conv.participants.find(p => p._id.toString() !== session.user.id);
+        conversationName = otherUser?.name || 'Unknown User';
+      }
+
+      return {
+        id: conv._id.toString(),
+        name: conversationName,
+        isGroup: conv.isGroup,
+        participants: conv.participants.map(p => ({
+          user: {
+            id: p._id.toString(),
+            name: p.name,
+            email: p.email,
+            image: p.image
+          }
+        })),
+        lastMessage: conv.lastMessage ? {
+          content: conv.lastMessage.content || '',
+          type: conv.lastMessage.type || 'text',
+          senderName: conv.lastMessage.senderId?.name || 'Unknown',
+          createdAt: conv.lastMessage.createdAt || conv.updatedAt
+        } : null,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt
+      };
+    });
 
     return NextResponse.json(transformedConversations);
   } catch (error) {
@@ -85,9 +94,13 @@ export async function POST(request) {
       }).populate('participants', 'id name email image');
 
       if (existingConversation) {
+        // Get the other user's name for 1-on-1 chats
+        const otherUser = existingConversation.participants.find(p => p._id.toString() !== session.user.id);
+        const conversationName = otherUser?.name || 'Unknown User';
+
         return NextResponse.json({
           id: existingConversation._id.toString(),
-          name: existingConversation.name,
+          name: conversationName,
           isGroup: existingConversation.isGroup,
           participants: existingConversation.participants.map(p => ({
             user: {
@@ -118,12 +131,19 @@ export async function POST(request) {
 
     await conversation.save();
 
-    // Populate participants for response
+    // Populate the new conversation
     await conversation.populate('participants', 'id name email image');
 
-    const responseConversation = {
+    // Get the other user's name for 1-on-1 chats
+    let conversationName = conversation.name;
+    if (!conversation.isGroup && conversation.participants.length === 2) {
+      const otherUser = conversation.participants.find(p => p._id.toString() !== session.user.id);
+      conversationName = otherUser?.name || 'Unknown User';
+    }
+
+    return NextResponse.json({
       id: conversation._id.toString(),
-      name: conversation.name,
+      name: conversationName,
       isGroup: conversation.isGroup,
       participants: conversation.participants.map(p => ({
         user: {
@@ -136,9 +156,7 @@ export async function POST(request) {
       lastMessage: null,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
-    };
-
-    return NextResponse.json(responseConversation, { status: 201 });
+    }, { status: 201 });
   } catch (error) {
     console.error('Error creating conversation:', error);
     return NextResponse.json(

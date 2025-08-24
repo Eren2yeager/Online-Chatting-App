@@ -1,27 +1,68 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon, QrCodeIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 import QRCode from 'react-qr-code';
 
 export default function QRCodeModal({ isOpen, onClose, currentUser }) {
+  const { data: session } = useSession();
   const [qrData, setQrData] = useState('');
   const [activeTab, setActiveTab] = useState('qr'); // 'qr' or 'add'
+  const [friendId, setFriendId] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    if (isOpen && currentUser) {
+    if (isOpen && session?.user) {
       // Create QR data with user info
       const data = JSON.stringify({
         type: 'add_friend',
-        userId: currentUser.id,
-        name: currentUser.name,
-        email: currentUser.email,
+        userId: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
         timestamp: Date.now()
       });
       setQrData(data);
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, session]);
+
+  const handleAddFriend = async () => {
+    if (!friendId.trim()) {
+      setMessage('Please enter a user ID or email');
+      return;
+    }
+
+    setIsAdding(true);
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/friend-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipientId: friendId.trim()
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessage('Friend request sent successfully!');
+        setFriendId('');
+      } else {
+        setMessage(data.error || 'Failed to send friend request');
+      }
+    } catch (error) {
+      console.error('Error adding friend:', error);
+      setMessage('Failed to send friend request');
+    } finally {
+      setIsAdding(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -101,8 +142,8 @@ export default function QRCodeModal({ isOpen, onClose, currentUser }) {
                 )}
                 
                 <div className="mt-4 text-sm text-gray-500">
-                  <p>Your ID: {currentUser?.id}</p>
-                  <p>Name: {currentUser?.name}</p>
+                  <p>Your ID: {session?.user?.id}</p>
+                  <p>Name: {session?.user?.name}</p>
                 </div>
               </div>
             ) : (
@@ -111,18 +152,47 @@ export default function QRCodeModal({ isOpen, onClose, currentUser }) {
                   Add Friends Manually
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Enter your friend's user ID or email to add them
+                  Enter your friend's user ID to add them
                 </p>
                 
                 <div className="space-y-4">
                   <input
                     type="text"
-                    placeholder="Enter user ID or email"
+                    value={friendId}
+                    onChange={(e) => setFriendId(e.target.value)}
+                    placeholder="Enter user ID"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                  <button className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                    Add Friend
-                  </button>
+                  
+                  {message && (
+                    <div className={`text-sm p-3 rounded-lg ${
+                      message.includes('successfully') 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {message}
+                    </div>
+                  )}
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleAddFriend}
+                    disabled={isAdding || !friendId.trim()}
+                    className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isAdding ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlusIcon className="w-4 h-4" />
+                        Add Friend
+                      </>
+                    )}
+                  </motion.button>
                 </div>
                 
                 <div className="mt-6 text-sm text-gray-500">

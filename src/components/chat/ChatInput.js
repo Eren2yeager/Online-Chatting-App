@@ -1,23 +1,52 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { PaperAirplaneIcon, PhotoIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
+import { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  PaperAirplaneIcon, 
+  PhotoIcon, 
+  MicrophoneIcon, 
+  PaperClipIcon,
+  VideoCameraIcon,
+  DocumentIcon,
+  FaceSmileIcon
+} from '@heroicons/react/24/outline';
 
-export default function ChatInput({ onSendMessage, onSendMedia, isRecording = false, onStartRecording, onStopRecording }) {
+export default function ChatInput({ onSendMessage, onSendMedia }) {
   const [message, setMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef(null);
-  const audioInputRef = useRef(null);
-  const videoInputRef = useRef(null);
+  const [showMediaMenu, setShowMediaMenu] = useState(false);
+  const mediaMenuRef = useRef(null);
+
+  // Close media menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (mediaMenuRef.current && !mediaMenuRef.current.contains(event.target)) {
+        setShowMediaMenu(false);
+      }
+    };
+
+    if (showMediaMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMediaMenu]);
+
+  // Detect URLs in message
+  const detectLinks = (text) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.match(urlRegex) || [];
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (message.trim()) {
-      onSendMessage(message.trim());
+      const links = detectLinks(message);
+      onSendMessage(message.trim(), links);
       setMessage('');
-      setIsTyping(false);
     }
   };
 
@@ -48,181 +77,162 @@ export default function ChatInput({ onSendMessage, onSendMedia, isRecording = fa
     }
   };
 
-  const handleFileChange = async (e) => {
+  const handleFileChange = async (e, type) => {
     const file = e.target.files[0];
     if (file) {
-      const mediaUrl = await uploadToCloudinary(file, 'image');
+      const mediaUrl = await uploadToCloudinary(file, type);
       if (mediaUrl) {
-        onSendMedia(file, 'image', mediaUrl);
+        onSendMedia(file, type, mediaUrl);
       }
-      e.target.value = null; // Reset input
-    }
-  };
-
-  const handleAudioChange = async (e) => {
-    const file = e.target.files[0];
-    if (file && file.type.startsWith('audio/')) {
-      const mediaUrl = await uploadToCloudinary(file, 'audio');
-      if (mediaUrl) {
-        onSendMedia(file, 'audio', mediaUrl);
-      }
-      e.target.value = null; // Reset input
-    }
-  };
-
-  const handleVideoChange = async (e) => {
-    const file = e.target.files[0];
-    if (file && file.type.startsWith('video/')) {
-      const mediaUrl = await uploadToCloudinary(file, 'video');
-      if (mediaUrl) {
-        onSendMedia(file, 'video', mediaUrl);
-      }
-      e.target.value = null; // Reset input
+      e.target.value = null;
+      setShowMediaMenu(false);
     }
   };
 
   const handleTyping = (e) => {
     setMessage(e.target.value);
-    setIsTyping(e.target.value.length > 0);
   };
 
+  const mediaOptions = [
+    {
+      icon: PhotoIcon,
+      label: 'Photo',
+      type: 'image',
+      accept: 'image/*',
+      color: 'text-green-600 hover:bg-green-50'
+    },
+    {
+      icon: VideoCameraIcon,
+      label: 'Video',
+      type: 'video',
+      accept: 'video/*',
+      color: 'text-purple-600 hover:bg-purple-50'
+    },
+    {
+      icon: MicrophoneIcon,
+      label: 'Audio',
+      type: 'audio',
+      accept: 'audio/*',
+      color: 'text-orange-600 hover:bg-orange-50'
+    },
+    {
+      icon: DocumentIcon,
+      label: 'Document',
+      type: 'document',
+      accept: '.pdf,.doc,.docx,.txt,.rtf,.odt,.pages,.epub,.mobi,.azw3,.cbr,.cbz,.zip,.rar,.7z,.tar,.gz,.mp3,.wav,.flac,.aac,.ogg,.m4a,.mp4,.avi,.mov,.wmv,.flv,.webm,.mkv,.3gp,.m4v,.jpg,.jpeg,.png,.gif,.bmp,.svg,.webp,.tiff,.ico,.psd,.ai,.eps,.raw,.cr2,.nef,.arw,.dng,.heic,.heif',
+      color: 'text-blue-600 hover:bg-blue-50'
+    }
+  ];
+
   return (
-    <motion.div
-      initial={{ y: 50, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className="border-t border-gray-200 bg-white p-4"
-    >
-      <form onSubmit={handleSubmit} className="flex items-center gap-3">
-        {/* Media Upload Buttons */}
-        <div className="flex gap-2">
+    <div className="p-4">
+      <form onSubmit={handleSubmit} className="flex items-end gap-3">
+        {/* Media Upload Button */}
+        <div className="relative">
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setShowMediaMenu(!showMediaMenu)}
             disabled={isUploading}
-            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-            title="Send image"
+            className="p-3 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors disabled:opacity-50"
+            title="Attach media"
           >
-            <PhotoIcon className="w-5 h-5" />
+            <PaperClipIcon className="w-6 h-6" />
           </motion.button>
 
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            type="button"
-            onClick={() => videoInputRef.current?.click()}
-            disabled={isUploading}
-            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-            title="Send video"
-          >
-            {/* Use PhotoIcon as a placeholder for video, or replace with a video icon if available */}
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <rect x="3" y="5" width="15" height="14" rx="2" />
-              <polygon points="16,7 22,12 16,17" fill="currentColor" />
-            </svg>
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            type="button"
-            onClick={() => audioInputRef.current?.click()}
-            disabled={isUploading}
-            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-            title="Send audio"
-          >
-            <MicrophoneIcon className="w-5 h-5" />
-          </motion.button>
+          {/* Media Menu Dropdown */}
+          <AnimatePresence>
+            {showMediaMenu && (
+              <motion.div
+                ref={mediaMenuRef}
+                initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 p-4 min-w-[280px] z-50"
+              >
+                <div className="grid grid-cols-2 gap-3">
+                  {mediaOptions.map((option) => (
+                    <motion.button
+                      key={option.type}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      type="button"
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = option.accept;
+                        input.onchange = (e) => handleFileChange(e, option.type);
+                        input.click();
+                        setShowMediaMenu(false);
+                      }}
+                      className={`flex flex-col items-center p-4 rounded-lg transition-colors ${option.color}`}
+                    >
+                      <option.icon className="w-8 h-8 mb-2" />
+                      <span className="text-sm font-medium">{option.label}</span>
+                    </motion.button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-
-        {/* Hidden file inputs */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-        <input
-          ref={videoInputRef}
-          type="file"
-          accept="video/*"
-          onChange={handleVideoChange}
-          className="hidden"
-        />
-        <input
-          ref={audioInputRef}
-          type="file"
-          accept="audio/*"
-          onChange={handleAudioChange}
-          className="hidden"
-        />
 
         {/* Message Input */}
         <div className="flex-1 relative">
-          <input
-            type="text"
+          <textarea
             value={message}
             onChange={handleTyping}
             placeholder={isUploading ? "Uploading..." : "Type a message..."}
-            className="w-full px-4 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-12"
-            disabled={isRecording || isUploading}
+            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 placeholder-gray-500 text-base resize-none max-h-32"
+            rows="1"
+            disabled={isUploading}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
           />
-
-          {/* Send Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            type="submit"
-            disabled={!message.trim() || isRecording || isUploading}
-            className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-full transition-colors ${
-              message.trim() && !isRecording && !isUploading
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
+          
+          {/* Emoji Button */}
+          <button
+            type="button"
+            className="absolute right-12 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <PaperAirplaneIcon className="w-4 h-4" />
-          </motion.button>
+            <FaceSmileIcon className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Recording Button */}
-        {isRecording && (
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            type="button"
-            onClick={onStopRecording}
-            className="p-3 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors animate-pulse"
-            title="Stop recording"
-          >
-            <div className="w-4 h-4 bg-white rounded-full"></div>
-          </motion.button>
-        )}
+        {/* Send Button */}
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          type="submit"
+          disabled={!message.trim() || isUploading}
+          className={`p-3 rounded-full transition-colors ${
+            message.trim() && !isUploading
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+          }`}
+        >
+          <PaperAirplaneIcon className="w-6 h-6" />
+        </motion.button>
       </form>
 
       {/* Upload Progress */}
       {isUploading && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-sm text-blue-600 mt-2 flex items-center gap-2"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-3"
         >
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-          Uploading media...
+          <div className="flex items-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+            <span className="text-sm text-gray-600">Uploading...</span>
+          </div>
         </motion.div>
       )}
-
-      {/* Typing Indicator */}
-      {isTyping && !isUploading && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-sm text-gray-500 mt-2"
-        >
-          Typing...
-        </motion.div>
-      )}
-    </motion.div>
+    </div>
   );
 }

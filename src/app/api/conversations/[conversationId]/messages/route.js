@@ -15,7 +15,11 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { conversationId } = params;
+    const { conversationId } = await params;
+
+    if (!conversationId || conversationId === 'undefined') {
+      return NextResponse.json({ error: 'Invalid conversation ID' }, { status: 400 });
+    }
 
     // Check if user is part of the conversation
     const conversation = await Conversation.findById(conversationId);
@@ -65,8 +69,12 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { conversationId } = params;
+    const { conversationId } = await params;
     const { content, type = 'text', mediaUrl = null } = await request.json();
+
+    if (!conversationId || conversationId === 'undefined') {
+      return NextResponse.json({ error: 'Invalid conversation ID' }, { status: 400 });
+    }
 
     if (!content && !mediaUrl) {
       return NextResponse.json(

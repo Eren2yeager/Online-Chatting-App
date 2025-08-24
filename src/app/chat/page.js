@@ -2,7 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { motion } from 'framer-motion';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ArrowLeftIcon, 
+  MagnifyingGlassIcon, 
+  EllipsisVerticalIcon,
+  PlusIcon,
+  UserGroupIcon,
+  QrCodeIcon,
+  BellIcon,
+  UserCircleIcon
+} from '@heroicons/react/24/outline';
 import { useSocket } from '@/components/providers/SocketProvider';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatWindow from '@/components/chat/ChatWindow';
@@ -10,11 +21,37 @@ import SecureLayout from '@/components/layout/SecureLayout';
 
 export default function ChatPage() {
   const { data: session } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { socket, on, off, emit } = useSocket();
+  
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
+
+  // Check if mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Handle mobile navigation
+  useEffect(() => {
+    const conversationId = searchParams.get('conversation');
+    if (conversationId && isMobile) {
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (conversation) {
+        setSelectedConversation(conversation);
+      }
+    }
+  }, [searchParams, conversations, isMobile]);
 
   // Fetch conversations on component mount
   useEffect(() => {
@@ -32,8 +69,13 @@ export default function ChatPage() {
       if (socket) {
         emit('join-conversation', selectedConversation.id);
       }
+      
+      // Update URL for mobile navigation
+      if (isMobile) {
+        router.push(`/chat?conversation=${selectedConversation.id}`);
+      }
     }
-  }, [selectedConversation, socket, emit]);
+  }, [selectedConversation, socket, emit, isMobile, router]);
 
   // Socket event listeners for real-time updates
   useEffect(() => {
@@ -53,7 +95,7 @@ export default function ChatPage() {
                 lastMessage: {
                   content: data.message.content,
                   type: data.message.type,
-                  senderName: data.message.sender.name,
+                  senderName: data.message.senderName,
                   createdAt: new Date()
                 } 
               }
@@ -64,7 +106,6 @@ export default function ChatPage() {
 
     const handleConversationUpdated = (data) => {
       if (data.conversationId === selectedConversation?.id) {
-        // Update conversation in list
         setConversations(prev => 
           prev.map(conv => 
             conv.id === data.conversationId 
@@ -77,10 +118,8 @@ export default function ChatPage() {
 
     const handleMessageDeleted = (data) => {
       if (data.conversationId === selectedConversation?.id) {
-        // Remove deleted message
         setMessages(prev => prev.filter(msg => msg.id !== data.messageId));
         
-        // Update conversation list if needed
         if (data.deletedFor === 'everyone') {
           setConversations(prev => 
             prev.map(conv => 
@@ -93,7 +132,18 @@ export default function ChatPage() {
       }
     };
 
-    // Listen for conversation updates from sidebar
+    const handleUserTyping = (data) => {
+      console.log('User typing:', data);
+    };
+
+    const handleUserOnline = (data) => {
+      console.log('User online:', data);
+    };
+
+    const handleUserOffline = (data) => {
+      console.log('User offline:', data);
+    };
+
     const handleConversationUpdateEvent = (event) => {
       const { detail } = event;
       if (detail.conversationId) {
@@ -118,6 +168,9 @@ export default function ChatPage() {
     on('new-message', handleNewMessage);
     on('conversation-updated', handleConversationUpdated);
     on('message-deleted', handleMessageDeleted);
+    on('user-typing', handleUserTyping);
+    on('user-online', handleUserOnline);
+    on('user-offline', handleUserOffline);
 
     // Set up window event listeners
     window.addEventListener('conversation-updated', handleConversationUpdateEvent);
@@ -128,6 +181,9 @@ export default function ChatPage() {
       off('new-message', handleNewMessage);
       off('conversation-updated', handleConversationUpdated);
       off('message-deleted', handleMessageDeleted);
+      off('user-typing', handleUserTyping);
+      off('user-online', handleUserOnline);
+      off('user-offline', handleUserOffline);
       window.removeEventListener('conversation-updated', handleConversationUpdateEvent);
       window.removeEventListener('message-deleted', handleMessageDeleteEvent);
     };
@@ -168,7 +224,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleSendMessage = async (content) => {
+  const handleSendMessage = async (content, links = []) => {
     if (!selectedConversation || !content.trim()) return;
 
     try {
@@ -179,33 +235,31 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           content: content.trim(),
-          type: 'text'
+          type: 'text',
+          links
         }),
       });
 
       if (response.ok) {
         const newMessage = await response.json();
         
-        // Add message to local state
         setMessages(prev => [...prev, newMessage]);
         
-        // Emit message via socket for real-time updates
         emit('send-message', {
           conversationId: selectedConversation.id,
           message: newMessage
         });
         
-        // Update conversation list
         setConversations(prev => 
           prev.map(conv => 
             conv.id === selectedConversation.id 
               ? { 
                   ...conv, 
-                  lastMessage: { 
-                    content: content.trim(), 
-                    type: 'text', 
+                  lastMessage: {
+                    content: content.trim(),
+                    type: 'text',
                     senderName: session?.user?.name,
-                    createdAt: new Date() 
+                    createdAt: new Date()
                   } 
                 }
               : conv
@@ -218,7 +272,7 @@ export default function ChatPage() {
   };
 
   const handleSendMedia = async (file, type, mediaUrl) => {
-    if (!selectedConversation || !mediaUrl) return;
+    if (!selectedConversation) return;
 
     try {
       const response = await fetch(`/api/conversations/${selectedConversation.id}/messages`, {
@@ -227,35 +281,32 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          content: `Sent ${type}`,
-          type,
-          mediaUrl
+          content: `Sent a ${type}`,
+          type: type,
+          mediaUrl: mediaUrl
         }),
       });
 
       if (response.ok) {
         const newMessage = await response.json();
         
-        // Add message to local state
         setMessages(prev => [...prev, newMessage]);
         
-        // Emit message via socket for real-time updates
         emit('send-message', {
           conversationId: selectedConversation.id,
           message: newMessage
         });
         
-        // Update conversation list
         setConversations(prev => 
           prev.map(conv => 
             conv.id === selectedConversation.id 
               ? { 
                   ...conv, 
-                  lastMessage: { 
-                    content: `Sent ${type}`, 
-                    type, 
+                  lastMessage: {
+                    content: `Sent a ${type}`,
+                    type: type,
                     senderName: session?.user?.name,
-                    createdAt: new Date() 
+                    createdAt: new Date()
                   } 
                 }
               : conv
@@ -267,15 +318,13 @@ export default function ChatPage() {
     }
   };
 
-  const handleMessageDeleted = (messageId, deleteFor) => {
-    // Remove message from local state
+  const handleMessageDeleted = (messageId, deletedFor) => {
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
     
-    // Update conversation list if message was deleted for everyone
-    if (deleteFor === 'everyone') {
+    if (deletedFor === 'everyone') {
       setConversations(prev => 
         prev.map(conv => 
-          conv.id === selectedConversation.id 
+          conv.id === selectedConversation?.id 
             ? { ...conv, lastMessage: null }
             : conv
         )
@@ -283,57 +332,130 @@ export default function ChatPage() {
     }
   };
 
-  const handleCreateConversation = () => {
-    // For now, create a simple 1-on-1 conversation
-    // In a real app, you'd have a modal to select users
-    const newConversation = {
-      id: `temp-${Date.now()}`,
-      name: 'New Chat',
-      isGroup: false,
-      participants: [
-        { user: { id: session.user.id, name: session.user.name, email: session.user.email, image: session.user.image } }
-      ],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    setConversations(prev => [newConversation, ...prev]);
-    setSelectedConversation(newConversation);
+  const handleBackToSidebar = () => {
+    setSelectedConversation(null);
+    router.push('/chat');
   };
 
   if (loading) {
     return (
       <SecureLayout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+        <div className="flex items-center justify-center h-screen bg-gray-50">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       </SecureLayout>
     );
   }
 
+  // Mobile: Show only sidebar or only chat window
+  if (isMobile) {
+    if (selectedConversation) {
+      // Mobile: Show chat window with back button
+      return (
+        <SecureLayout>
+          <div className="flex flex-col h-screen bg-gray-50">
+            {/* Mobile Chat Header */}
+            <div className="flex items-center p-4 bg-white border-b border-gray-200 shadow-sm">
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleBackToSidebar}
+                className="p-2 mr-3 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <ArrowLeftIcon className="w-6 h-6 text-gray-600" />
+              </motion.button>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {selectedConversation.name}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {selectedConversation.isGroup ? 'Group' : 'Direct message'}
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <EllipsisVerticalIcon className="w-6 h-6 text-gray-600" />
+              </motion.button>
+            </div>
+            
+            {/* Chat Window */}
+            <div className="flex-1">
+              <ChatWindow
+                conversation={selectedConversation}
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                onSendMedia={handleSendMedia}
+                onMessageDeleted={handleMessageDeleted}
+                isMobile={true}
+              />
+            </div>
+          </div>
+        </SecureLayout>
+      );
+    } else {
+      // Mobile: Show only sidebar
+      return (
+        <SecureLayout>
+          <div className="h-screen bg-gray-50">
+            <ChatSidebar
+              conversations={conversations}
+              onSelectConversation={setSelectedConversation}
+              isMobile={true}
+            />
+          </div>
+        </SecureLayout>
+      );
+    }
+  }
+
+  // Desktop: Show both sidebar and chat window
   return (
     <SecureLayout>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex h-screen bg-gray-100"
-      >
-        {/* Sidebar */}
-        <ChatSidebar
-          conversations={conversations}
-          onSelectConversation={setSelectedConversation}
-          onCreateConversation={handleCreateConversation}
-        />
+      <div className="flex h-screen bg-gray-50 overflow-hidden">
+        {/* Desktop Sidebar */}
+        <div className="flex-shrink-0 w-80">
+          <ChatSidebar
+            conversations={conversations}
+            onSelectConversation={setSelectedConversation}
+            isMobile={false}
+          />
+        </div>
 
-        {/* Chat Window */}
-        <ChatWindow
-          conversation={selectedConversation}
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          onSendMedia={handleSendMedia}
-          onMessageDeleted={handleMessageDeleted}
-        />
-      </motion.div>
+        {/* Desktop Chat Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {selectedConversation ? (
+            <ChatWindow
+              conversation={selectedConversation}
+              messages={messages}
+              onSendMessage={handleSendMessage}
+              onSendMedia={handleSendMedia}
+              onMessageDeleted={handleMessageDeleted}
+              isMobile={false}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-4">
+              <div className="text-center max-w-md">
+                <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Welcome to Chat</h3>
+                <p className="text-gray-600 mb-6">Select a conversation to start messaging</p>
+                <button
+                  onClick={() => setShowSidebar(true)}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Start a Conversation
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </SecureLayout>
   );
 }
