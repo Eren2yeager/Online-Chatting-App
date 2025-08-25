@@ -1,23 +1,38 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { format } from 'date-fns';
+import { 
+  ArrowLeftIcon,
+  EllipsisVerticalIcon,
+  PaperClipIcon,
+  EmojiHappyIcon,
+  PaperAirplaneIcon
+} from '@heroicons/react/24/outline';
+import { useSocket, useSocketEmit, useSocketListener, useTypingIndicator } from '../../lib/socket';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
+import MessageContextMenu from './MessageContextMenu';
 
-export default function ChatWindow({ 
-  conversation, 
-  messages, 
-  onSendMessage, 
-  onSendMedia, 
-  onMessageDeleted,
-  isMobile = false
-}) {
+/**
+ * Chat window component for displaying and sending messages
+ */
+export default function ChatWindow({ chat, onBack, onNewMessage }) {
   const { data: session } = useSession();
+  const { socket, isConnected } = useSocket();
+  const { emit } = useSocketEmit();
   const messagesEndRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuMessage, setContextMenuMessage] = useState(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
 
+  const typingUsers = useTypingIndicator(chat._id);
+
+  // Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -26,133 +41,277 @@ export default function ChatWindow({
     scrollToBottom();
   }, [messages]);
 
-  const getConversationName = () => {
-    if (conversation.name) return conversation.name;
-    if (conversation.isGroup) {
-      return conversation.participants?.map(p => p.user?.name).join(', ') || 'Group Chat';
+  // Fetch messages
+  useEffect(() => {
+    if (chat?._id) {
+      fetchMessages();
     }
-    return conversation.participants?.[0]?.user?.name || 'Unknown User';
-  };
+  }, [chat._id]);
 
-  const getConversationAvatar = () => {
-    if (conversation.isGroup) {
-      return (
-        <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-          </svg>
-        </div>
+  // Socket event listeners
+  useSocketListener('message:new', (data) => {
+    if (data.chatId === chat._id) {
+      setMessages(prev => [...prev, data.message]);
+      onNewMessage(data.message);
+    }
+  });
+
+  useSocketListener('message:edit', (data) => {
+    if (data.chatId === chat._id) {
+      setMessages(prev => 
+        prev.map(msg => 
+          msg._id === data.message._id ? data.message : msg
+        )
       );
     }
-    
-    const participant = conversation.participants?.[0]?.user;
-    if (participant?.image) {
-      return (
-        <img
-          src={participant.image}
-          alt={participant.name}
-          className="w-10 h-10 rounded-full object-cover"
-        />
+  });
+
+  useSocketListener('message:delete', (data) => {
+    if (data.chatId === chat._id) {
+      if (data.deleteForEveryone) {
+        setMessages(prev => 
+          prev.map(msg => 
+            msg._id === data.messageId 
+              ? { ...msg, isDeleted: true, text: '', media: [] }
+              : msg
+          )
+        );
+      } else {
+        setMessages(prev => 
+          prev.filter(msg => msg._id !== data.messageId)
+        );
+      }
+    }
+  });
+
+  useSocketListener('reaction:update', (data) => {
+    if (data.chatId === chat._id) {
+      setMessages(prev => 
+        prev.map(msg => 
+          msg._id === data.messageId 
+            ? { ...msg, reactions: data.reactions }
+            : msg
+        )
       );
     }
-    
-    return (
-      <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
-        <span className="text-white font-semibold text-lg">
-          {participant?.name?.charAt(0) || 'U'}
-        </span>
-      </div>
-    );
+  });
+
+  const fetchMessages = async (beforeId = null) => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        chatId: chat._id,
+        limit: 50,
+      });
+      
+      if (beforeId) {
+        params.append('before', beforeId);
+      }
+
+      const response = await fetch(`/api/messages?${params}`);
+      const data = await response.json();
+
+      if (data.success) {
+        if (beforeId) {
+          setMessages(prev => [...data.data, ...prev]);
+        } else {
+          setMessages(data.data);
+        }
+        setHasMore(data.pagination.hasMore);
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (!conversation) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex-1 flex items-center justify-center bg-gray-50"
-      >
-        <div className="text-center">
-          <div className="w-24 h-24 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to Chat</h2>
-          <p className="text-gray-600">Select a conversation to start messaging</p>
-        </div>
-      </motion.div>
-    );
-  }
+  const handleSendMessage = async (text, media = []) => {
+    if (!text.trim() && media.length === 0) return;
+
+    try {
+      const messageData = {
+        chatId: chat._id,
+        text: text.trim(),
+        media,
+      };
+
+      // Emit via socket for real-time delivery
+      emit('message:new', messageData);
+
+      // Also send via API for persistence
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messageData),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to send message');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  const handleMessageAction = (action, message) => {
+    switch (action) {
+      case 'edit':
+        // Handle message editing
+        break;
+      case 'delete':
+        emit('message:delete', {
+          messageId: message._id,
+          deleteForEveryone: false,
+        });
+        break;
+      case 'deleteForEveryone':
+        emit('message:delete', {
+          messageId: message._id,
+          deleteForEveryone: true,
+        });
+        break;
+      case 'reply':
+        // Handle reply functionality
+        break;
+      default:
+        break;
+    }
+    setShowContextMenu(false);
+  };
+
+  const handleMessageContextMenu = (e, message) => {
+    e.preventDefault();
+    setContextMenuMessage(message);
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    setShowContextMenu(true);
+  };
+
+  const getChatDisplayName = () => {
+    if (chat.isGroup) {
+      return chat.name || 'Group Chat';
+    } else {
+      const otherParticipant = chat.participants.find(
+        p => p._id !== session?.user?.id
+      );
+      return otherParticipant?.name || 'Unknown User';
+    }
+  };
+
+  const getChatAvatar = () => {
+    if (chat.isGroup) {
+      return chat.avatar || null;
+    } else {
+      const otherParticipant = chat.participants.find(
+        p => p._id !== session?.user?.id
+      );
+      return otherParticipant?.image || otherParticipant?.avatar || null;
+    }
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="flex-1 flex flex-col bg-gray-50 overflow-hidden"
-    >
-      {/* Header - Only show on desktop since mobile has its own header */}
-      {!isMobile && (
-        <div className="bg-white border-b border-gray-200 flex-shrink-0">
-          <div className="flex items-center p-4">
-            {getConversationAvatar()}
-            <div className="flex-1 ml-3">
-              <h2 className="font-semibold text-gray-900">
-                {getConversationName()}
+    <div className="flex flex-col h-full bg-white">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={onBack}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+          >
+            <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
+          </button>
+          
+          <div className="flex items-center space-x-3">
+            <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+              {getChatAvatar() ? (
+                <img
+                  src={getChatAvatar()}
+                  alt={getChatDisplayName()}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-6 w-6 text-gray-400">
+                  {chat.isGroup ? '👥' : '👤'}
+                </div>
+              )}
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {getChatDisplayName()}
               </h2>
+              {typingUsers.length > 0 && (
               <p className="text-sm text-gray-500">
-                {conversation.isGroup 
-                  ? `${conversation.participants?.length || 0} members` 
-                  : 'Online'
-                }
+                  {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
               </p>
+              )}
             </div>
           </div>
         </div>
-      )}
+
+        <button className="p-2 rounded-lg hover:bg-gray-100">
+          <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
+        </button>
+      </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {messages.length === 0 ? (
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {loading && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <p className="text-gray-500 font-medium">No messages yet</p>
-              <p className="text-sm text-gray-400">Start the conversation!</p>
-            </div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
           </div>
         ) : (
+          <>
+            {hasMore && (
+              <button
+                onClick={() => fetchMessages(messages[0]?._id)}
+                className="w-full text-center text-sm text-blue-600 hover:text-blue-700 py-2"
+              >
+                Load more messages
+              </button>
+            )}
+            
           <AnimatePresence>
             {messages.map((message, index) => (
               <motion.div
-                key={message.id}
+                  key={message._id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.2 }}
               >
                 <ChatMessage
                   message={message}
-                  onDelete={onMessageDeleted}
-                  isOwnMessage={message.senderId === session?.user?.id}
+                    isOwn={message.sender._id === session?.user?.id}
+                    onContextMenu={(e) => handleMessageContextMenu(e, message)}
                 />
               </motion.div>
             ))}
           </AnimatePresence>
+            
+            <div ref={messagesEndRef} />
+          </>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-200">
+      <div className="border-t border-gray-200 p-4">
         <ChatInput
-          onSendMessage={onSendMessage}
-          onSendMedia={onSendMedia}
+          onSendMessage={handleSendMessage}
+          disabled={!isConnected}
         />
       </div>
-    </motion.div>
+
+      {/* Context Menu */}
+      <MessageContextMenu
+        isOpen={showContextMenu}
+        position={contextMenuPosition}
+        onClose={() => setShowContextMenu(false)}
+        onAction={handleMessageAction}
+        message={contextMenuMessage}
+        isOwnMessage={contextMenuMessage?.sender._id === session?.user?.id}
+      />
+    </div>
   );
 }

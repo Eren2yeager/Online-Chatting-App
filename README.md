@@ -1,269 +1,275 @@
-# ChatApp - Modern Online Chatting Application
+# ChatApp - Real-time Chat Application
 
-A feature-rich, real-time chat application built with Next.js, inspired by Line messaging app. Features include Google OAuth authentication, real-time messaging, media sharing, and a beautiful, responsive UI.
+A modern, production-ready chat application built with Next.js, featuring real-time messaging, friend management, group chats, and more.
 
-## 🚀 Features
+## Features
 
-- **🔐 Secure Authentication**: Google OAuth integration with NextAuth.js
-- **💬 Real-time Messaging**: WebSocket-powered instant messaging
-- **📱 Modern UI/UX**: Beautiful interface with Framer Motion animations
-- **🖼️ Media Sharing**: Support for images and audio files
-- **📱 Responsive Design**: Works seamlessly on all devices
-- **🔒 Session Protection**: Secure layout requiring user authentication
-- **🗄️ Database**: MongoDB with Mongoose ODM
+### 🔐 Authentication & Profiles
+- Google OAuth authentication with NextAuth.js
+- User profiles with customizable avatars, bios, and status
+- Unique handles for easy friend discovery
+- QR code sharing for friend invitations
 
-## 🛠️ Tech Stack
+### 👥 Friend System
+- Send, accept, and reject friend requests
+- Multiple invitation methods:
+  - QR code scanning
+  - Handle/username search
+  - Email search
+- Friend status and presence indicators
 
-- **Frontend**: Next.js 14 (App Router), Tailwind CSS, Framer Motion
-- **Backend**: Next.js API Routes
-- **Authentication**: NextAuth.js with Google Provider
-- **Database**: MongoDB with Mongoose ODM
-- **Real-time**: WebSocket support (Socket.io)
-- **Styling**: Tailwind CSS with custom components
+### 💬 Chat & Messaging
+- 1:1 and group chats
+- Real-time messaging with Socket.IO
+- Message types: text, images, videos, files
+- Message reactions and emoji support
+- Reply to messages
+- Message deletion (for me/everyone)
+- Typing indicators
+- Read receipts and delivery status
 
-## 📋 Prerequisites
+### 🎨 UI/UX
+- Responsive design (mobile-first)
+- Dark/light theme support
+- Smooth animations with Framer Motion
+- Modern, clean interface
+- Mobile-optimized navigation
+
+### 🔒 Security
+- Input validation with Zod
+- Rate limiting
+- Secure file uploads with Cloudinary
+- Authentication on all protected routes
+- Security headers
+
+## Tech Stack
+
+- **Frontend**: Next.js 15, React 18, Tailwind CSS
+- **Backend**: Next.js API Routes, Socket.IO
+- **Database**: MongoDB with Mongoose
+- **Authentication**: NextAuth.js with Google OAuth
+- **File Storage**: Cloudinary
+- **Real-time**: Socket.IO
+- **Validation**: Zod
+- **Animations**: Framer Motion
+- **UI Components**: Heroicons, Emoji Mart
+
+## Prerequisites
 
 - Node.js 18+ 
-- npm or yarn
-- MongoDB (local or cloud instance)
-- Google OAuth credentials (for authentication)
+- MongoDB database
+- Google OAuth credentials
+- Cloudinary account
 
-## 🚀 Quick Start
+## Installation
 
-### 1. Clone and Install
-
+1. **Clone the repository**
 ```bash
-git clone <your-repo-url>
+   git clone <repository-url>
 cd online-chatting-app
+   ```
+
+2. **Install dependencies**
+   ```bash
 npm install
 ```
 
-### 2. Environment Setup
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env.local
+   ```
 
-Create a `.env.local` file in the root directory:
-
+   Fill in your environment variables:
 ```env
+   # Database
+   MONGODB_URI=mongodb://localhost:27017/chat-app
+
 # NextAuth Configuration
 NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-super-secret-key-change-this-in-production
+   NEXTAUTH_SECRET=your-nextauth-secret-key-here
 
-# Google OAuth (Get these from Google Cloud Console)
+   # Google OAuth
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 
-# MongoDB Configuration
-MONGODB_URI=mongodb://localhost:27017/chatapp
-```
+   # Cloudinary Configuration
+   CLOUDINARY_CLOUD_NAME=your-cloud-name
+   CLOUDINARY_API_KEY=your-api-key
+   CLOUDINARY_API_SECRET=your-api-secret
+   
+   # Socket.IO Server
+   SOCKET_SERVER_PORT=3001
+   
+   # Rate Limiting
+   RATE_LIMIT_WINDOW_MS=900000
+   RATE_LIMIT_MAX_REQUESTS=100
+   
+   # Message Deletion Window (in milliseconds)
+   MESSAGE_DELETE_WINDOW=120000
+   ```
 
-### 3. MongoDB Setup
+4. **Set up Google OAuth**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Enable Google+ API
+   - Create OAuth 2.0 credentials
+   - Add authorized redirect URIs:
+     - `http://localhost:3000/api/auth/callback/google` (development)
+     - `https://yourdomain.com/api/auth/callback/google` (production)
 
-#### Option A: Local MongoDB
-1. Install MongoDB Community Edition
-2. Start MongoDB service
-3. Create database: `chatapp`
+5. **Set up Cloudinary**
+   - Create a Cloudinary account
+   - Get your cloud name, API key, and API secret
+   - Configure upload presets if needed
 
-#### Option B: MongoDB Atlas (Cloud)
-1. Go to [MongoDB Atlas](https://www.mongodb.com/atlas)
-2. Create a free cluster
-3. Get your connection string
-4. Replace `MONGODB_URI` with your Atlas connection string
+6. **Set up MongoDB**
+   - Install MongoDB locally or use MongoDB Atlas
+   - Create a database for the application
 
-### 4. Google OAuth Setup
+## Running the Application
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable Google+ API
-4. Go to Credentials → Create Credentials → OAuth 2.0 Client IDs
-5. Set authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
-6. Copy Client ID and Client Secret to your `.env.local`
+### Development Mode
 
-### 5. Run the Application
+1. **Start the Socket.IO server**
+   ```bash
+   npm run dev:socket
+   ```
 
+2. **Start the Next.js development server**
+   ```bash
+   npm run dev:next
+   ```
+
+   Or run both simultaneously:
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+3. **Open your browser**
+   Navigate to `http://localhost:3000`
 
-## 📁 Project Structure
+### Production Mode
+
+1. **Build the application**
+   ```bash
+   npm run build
+   ```
+
+2. **Start the production server**
+   ```bash
+   npm start
+   ```
+
+## Project Structure
 
 ```
-src/
-├── app/                    # Next.js app directory
-│   ├── api/               # API routes
-│   │   ├── auth/          # NextAuth endpoints
-│   │   └── conversations/ # Chat API endpoints
-│   ├── auth/              # Authentication pages
-│   ├── chat/              # Main chat application
-│   ├── globals.css        # Global styles
-│   ├── layout.js          # Root layout
-│   └── page.js            # Home page
-├── components/             # React components
-│   ├── auth/              # Authentication components
-│   ├── chat/              # Chat-related components
-│   ├── layout/            # Layout components
-│   └── providers/         # Context providers
-├── lib/                    # Utility libraries
-│   ├── auth.js            # NextAuth configuration
-│   ├── mongodb.js         # MongoDB connection utility
-│   └── mongodb-client.js  # MongoDB client for NextAuth
-└── models/                 # Mongoose models
-    ├── User.js             # User model
-    ├── Conversation.js     # Conversation model
-    └── Message.js          # Message model
+online-chatting-app/
+├── app/                          # Next.js App Router
+│   ├── api/                      # API routes
+│   │   ├── auth/                 # Authentication routes
+│   │   ├── chats/                # Chat management
+│   │   ├── friends/              # Friend requests
+│   │   ├── messages/             # Message handling
+│   │   ├── uploads/              # File uploads
+│   │   └── users/                # User management
+│   ├── chats/                    # Chat pages
+│   ├── invite/                   # QR code invite page
+│   └── signin/                   # Sign-in page
+├── components/                   # React components
+│   ├── chat/                     # Chat-related components
+│   ├── layout/                   # Layout components
+│   └── providers/                # Context providers
+├── lib/                          # Utility libraries
+│   ├── auth.js                   # NextAuth configuration
+│   ├── cloudinary.js             # Cloudinary utilities
+│   ├── mongodb.js                # Database connection
+│   ├── socket.js                 # Socket.IO client
+│   ├── validators.js             # Zod validation schemas
+│   └── rateLimit.js              # Rate limiting utilities
+├── models/                       # Mongoose models
+│   ├── User.js                   # User model
+│   ├── Chat.js                   # Chat model
+│   ├── Message.js                # Message model
+│   ├── FriendRequest.js          # Friend request model
+│   └── Notification.js           # Notification model
+├── server/                       # Socket.IO server
+│   └── socket-server.js          # Real-time server
+└── public/                       # Static assets
 ```
 
-## 🔧 Configuration
+## API Endpoints
 
-### MongoDB Models
+### Authentication
+- `GET /api/auth/[...nextauth]` - NextAuth.js authentication
 
-The application uses three main Mongoose models:
+### Users
+- `GET /api/users/[id]` - Get user profile
+- `PATCH /api/users/[id]` - Update user profile
 
-- **User**: Authentication and user management
-- **Conversation**: Chat rooms and group chats with participants
-- **Message**: Individual chat messages with media support
+### Friends
+- `GET /api/friends/search` - Search for users
+- `POST /api/friends/requests` - Send friend request
+- `GET /api/friends/requests` - Get friend requests
+- `PATCH /api/friends/requests/[id]` - Accept/reject request
+- `DELETE /api/friends/requests/[id]` - Cancel request
 
-### Authentication Flow
+### Chats
+- `GET /api/chats` - Get user's chats
+- `POST /api/chats` - Create new chat
 
-1. User visits the application
-2. Redirected to sign-in if not authenticated
-3. Google OAuth authentication
-4. Session creation and user data storage in MongoDB
-5. Access to secure chat interface
+### Messages
+- `GET /api/messages` - Get chat messages
+- `POST /api/messages` - Send message
 
-### Database Schema
+### Uploads
+- `GET /api/uploads/signature` - Get Cloudinary upload signature
 
-```javascript
-// User Schema
-{
-  name: String,
-  email: String (unique),
-  emailVerified: Date,
-  image: String,
-  timestamps: true
-}
+## Socket.IO Events
 
-// Conversation Schema
-{
-  name: String,
-  isGroup: Boolean,
-  participants: [ObjectId], // Array of User IDs
-  lastMessage: {
-    content: String,
-    type: String,
-    senderId: ObjectId,
-    createdAt: Date
-  },
-  timestamps: true
-}
+### Client to Server
+- `message:new` - Send new message
+- `message:edit` - Edit message
+- `message:delete` - Delete message
+- `typing:start` - Start typing indicator
+- `typing:stop` - Stop typing indicator
+- `reaction:add` - Add reaction to message
+- `message:read` - Mark message as read
 
-// Message Schema
-{
-  content: String,
-  type: String (text/image/audio),
-  mediaUrl: String,
-  senderId: ObjectId,
-  conversationId: ObjectId,
-  timestamps: true
-}
-```
+### Server to Client
+- `message:new` - New message received
+- `message:edit` - Message edited
+- `message:delete` - Message deleted
+- `typing:start` - User started typing
+- `typing:stop` - User stopped typing
+- `reaction:update` - Message reactions updated
+- `message:read` - Message read by user
+- `presence:update` - User presence updated
 
-## 🎨 Customization
-
-### Colors and Themes
-
-Modify the color scheme by updating Tailwind classes in components. The current theme uses:
-- Primary: Blue (`blue-600`, `blue-700`)
-- Secondary: Purple (`purple-600`)
-- Accent: Green (`green-600`)
-- Neutral: Gray scale (`gray-50` to `gray-800`)
-
-### Animations
-
-Framer Motion animations can be customized in each component. Current animations include:
-- Fade-in effects
-- Slide transitions
-- Scale hover effects
-- Staggered loading animations
-
-## 🚀 Deployment
-
-### Vercel (Recommended)
-
-1. Push your code to GitHub
-2. Connect your repository to Vercel
-3. Set environment variables in Vercel dashboard:
-   - `MONGODB_URI`: Your MongoDB connection string
-   - `GOOGLE_CLIENT_ID`: Your Google OAuth client ID
-   - `GOOGLE_CLIENT_SECRET`: Your Google OAuth client secret
-   - `NEXTAUTH_SECRET`: Your NextAuth secret
-   - `NEXTAUTH_URL`: Your production URL
-4. Deploy automatically
-
-### Other Platforms
-
-The application can be deployed to any platform supporting Next.js:
-- Netlify
-- Railway
-- DigitalOcean App Platform
-- AWS Amplify
-
-## 🔒 Security Features
-
-- **Session-based Authentication**: Secure user sessions
-- **Route Protection**: Protected chat routes
-- **Input Validation**: Server-side validation for all inputs
-- **NoSQL Injection Protection**: Mongoose with parameterized queries
-- **CORS Protection**: Built-in Next.js security
-- **MongoDB Security**: Connection string validation and error handling
-
-## 🧪 Testing
-
-```bash
-# Run ESLint
-npm run lint
-
-# Run type checking (if using TypeScript)
-npm run type-check
-
-# Run tests (when implemented)
-npm test
-```
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## 📝 License
+## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## Support
 
-If you encounter any issues:
+If you encounter any issues or have questions, please:
 
-1. Check the [Issues](../../issues) page
-2. Review the setup instructions
-3. Ensure all environment variables are set correctly
-4. Verify MongoDB connection
-5. Check MongoDB logs for connection issues
+1. Check the [Issues](https://github.com/yourusername/online-chatting-app/issues) page
+2. Create a new issue with detailed information
+3. Include steps to reproduce the problem
 
-## 🔮 Future Enhancements
+## Acknowledgments
 
-- [ ] WebSocket real-time messaging
-- [ ] Cloudinary media upload integration
-- [ ] Group chat management
-- [ ] Message encryption
-- [ ] Push notifications
-- [ ] Mobile app
-- [ ] Voice and video calls
-- [ ] MongoDB aggregation for analytics
-- [ ] Real-time typing indicators
-
----
-
-**Built with ❤️ using Next.js, MongoDB, and modern web technologies**
+- [Next.js](https://nextjs.org/) - React framework
+- [Socket.IO](https://socket.io/) - Real-time communication
+- [Tailwind CSS](https://tailwindcss.com/) - CSS framework
+- [Framer Motion](https://www.framer.com/motion/) - Animation library
+- [Cloudinary](https://cloudinary.com/) - File storage
+- [MongoDB](https://www.mongodb.com/) - Database

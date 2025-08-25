@@ -1,120 +1,205 @@
-const { Server } = require('socket.io');
+import { io } from 'socket.io-client';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 
-let io;
+// Socket context
+const SocketContext = createContext();
 
-const initSocket = (server) => {
-  io = new Server(server, {
-    cors: {
-      origin: process.env.NEXTAUTH_URL || "http://localhost:3000",
-      methods: ["GET", "POST"]
+/**
+ * Socket.IO client provider for real-time communication
+ * Handles connection, authentication, and event management
+ */
+export function SocketProvider({ children }) {
+  const { data: session } = useSession();
+  const [socket, setSocket] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      if (socket) {
+        socket.disconnect();
+        setSocket(null);
+        setIsConnected(false);
+      }
+      return;
     }
-  });
 
-  io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
-
-    // Join user to their personal room
-    socket.on('join-user', (userId) => {
-      socket.join(`user-${userId}`);
-      socket.userId = userId;
-      
-      // Broadcast user online status
-      socket.broadcast.emit('user-online', { userId, status: 'online' });
+    // Create socket connection with authentication
+    const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
+      auth: {
+        token: session.accessToken || session.token
+      },
+      transports: ['websocket', 'polling'],
+      autoConnect: true,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
     });
 
-    // Join conversation room
-    socket.on('join-conversation', (conversationId) => {
-      socket.join(`conversation-${conversationId}`);
-      console.log(`User joined conversation: ${conversationId}`);
+    // Connection events
+    newSocket.on('connect', () => {
+      console.log('Socket connected');
+      setIsConnected(true);
+      setConnectionError(null);
     });
 
-    // Leave conversation room
-    socket.on('leave-conversation', (conversationId) => {
-      socket.leave(`conversation-${conversationId}`);
-      console.log(`User left conversation: ${conversationId}`);
+    newSocket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      setIsConnected(false);
     });
 
-    // Handle new message
-    socket.on('send-message', (data) => {
-      const { conversationId, message } = data;
-      
-      // Broadcast message to all users in the conversation
-      io.to(`conversation-${conversationId}`).emit('new-message', {
-        conversationId,
-        message
-      });
-
-      // Update conversation last message for all participants
-      io.to(`conversation-${conversationId}`).emit('conversation-updated', {
-        conversationId,
-        lastMessage: {
-          content: message.content,
-          type: message.type,
-          senderName: message.sender.name,
-          createdAt: new Date()
-        }
-      });
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setConnectionError(error.message);
+      setIsConnected(false);
     });
 
-    // Handle message deletion
-    socket.on('delete-message', (data) => {
-      const { conversationId, messageId, deletedFor } = data;
-      
-      // Broadcast message deletion to all users in the conversation
-      io.to(`conversation-${conversationId}`).emit('message-deleted', {
-        conversationId,
-        messageId,
-        deletedFor
-      });
+    newSocket.on('error', (error) => {
+      console.error('Socket error:', error);
+      setConnectionError(error.message);
     });
 
-    // Handle typing indicators
-    socket.on('typing-start', (data) => {
-      const { conversationId, userId, userName } = data;
-      socket.to(`conversation-${conversationId}`).emit('user-typing', {
-        conversationId,
-        userId,
-        userName,
-        isTyping: true
-      });
-    });
+    setSocket(newSocket);
 
-    socket.on('typing-stop', (data) => {
-      const { conversationId, userId } = data;
-      socket.to(`conversation-${conversationId}`).emit('user-typing', {
-        conversationId,
-        userId,
-        isTyping: false
-      });
-    });
+    // Cleanup on unmount
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [session?.user?.id, session?.accessToken, session?.token]);
 
-    // Handle user profile updates
-    socket.on('profile-updated', (data) => {
-      const { userId, updates } = data;
-      socket.broadcast.emit('user-profile-updated', { userId, updates });
-    });
+  const value = {
+    socket,
+    isConnected,
+    connectionError,
+  };
 
-    // Handle disconnection
-    socket.on('disconnect', () => {
-      if (socket.userId) {
-        // Broadcast user offline status
-        socket.broadcast.emit('user-offline', { 
-          userId: socket.userId, 
-          status: 'offline' 
+  return (
+    <SocketContext.Provider value={value}>
+      {children}
+    </SocketContext.Provider>
+  );
+}
+
+/**
+ * Hook to use socket context
+ */
+export function useSocket() {
+  const context = useContext(SocketContext);
+  if (!context) {
+    throw new Error('useSocket must be used within a SocketProvider');
+  }
+  return context;
+}
+
+/**
+ * Hook to emit socket events with error handling
+ */
+export function useSocketEmit() {
+  const { socket, isConnected } = useSocket();
+
+  const emit = (event, data) => {
+    if (!socket || !isConnected) {
+      console.warn('Socket not connected, cannot emit event:', event);
+      return false;
+    }
+
+    try {
+      socket.emit(event, data);
+      return true;
+    } catch (error) {
+      console.error('Error emitting socket event:', error);
+      return false;
+    }
+  };
+
+  return { emit, isConnected };
+}
+
+/**
+ * Hook to listen to socket events
+ */
+export function useSocketListener(event, callback) {
+  const { socket } = useSocket();
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on(event, callback);
+
+    return () => {
+      socket.off(event, callback);
+    };
+  }, [socket, event, callback]);
+}
+
+/**
+ * Hook for typing indicators
+ */
+export function useTypingIndicator(chatId) {
+  const { socket } = useSocket();
+  const [typingUsers, setTypingUsers] = useState(new Set());
+
+  useEffect(() => {
+    if (!socket || !chatId) return;
+
+    const handleTypingStart = (data) => {
+      if (data.chatId === chatId) {
+        setTypingUsers(prev => new Set([...prev, data.userName]));
+      }
+    };
+
+    const handleTypingStop = (data) => {
+      if (data.chatId === chatId) {
+        setTypingUsers(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.userName);
+          return newSet;
         });
       }
-      console.log('User disconnected:', socket.id);
-    });
-  });
+    };
 
-  return io;
-};
+    socket.on('typing:start', handleTypingStart);
+    socket.on('typing:stop', handleTypingStop);
 
-const getIO = () => {
-  if (!io) {
-    throw new Error('Socket.io not initialized!');
-  }
-  return io;
-};
+    return () => {
+      socket.off('typing:start', handleTypingStart);
+      socket.off('typing:stop', handleTypingStop);
+    };
+  }, [socket, chatId]);
 
-module.exports = { initSocket, getIO };
+  return Array.from(typingUsers);
+}
+
+/**
+ * Hook for presence updates
+ */
+export function usePresence() {
+  const { socket } = useSocket();
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handlePresenceUpdate = (data) => {
+      setOnlineUsers(prev => {
+        const newSet = new Set(prev);
+        if (data.status === 'online') {
+          newSet.add(data.userId);
+        } else {
+          newSet.delete(data.userId);
+        }
+        return newSet;
+      });
+    };
+
+    socket.on('presence:update', handlePresenceUpdate);
+
+    return () => {
+      socket.off('presence:update', handlePresenceUpdate);
+    };
+  }, [socket]);
+
+  return Array.from(onlineUsers);
+}

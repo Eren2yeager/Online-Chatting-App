@@ -1,472 +1,270 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   MagnifyingGlassIcon, 
-  UserCircleIcon,
-  BellIcon,
-  QrCodeIcon,
-  EllipsisVerticalIcon,
+  PlusIcon, 
   UserGroupIcon,
-  ChatBubbleLeftRightIcon,
-  PlusIcon
+  UserIcon,
+  EllipsisVerticalIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline';
-import { useSocket } from '../providers/SocketProvider';
-import QRCodeModal from './QRCodeModal';
-import UserProfile from './UserProfile';
-import CreateGroupModal from './CreateGroupModal';
-import FriendRequestsModal from './FriendRequestsModal';
+import { formatDistanceToNow } from 'date-fns';
 
-export default function ChatSidebar({ conversations, onSelectConversation, isMobile = false }) {
+/**
+ * Chat sidebar component displaying chat list with search and actions
+ */
+export default function ChatSidebar({
+  chats,
+  selectedChat,
+  onChatSelect,
+  onNewMessage,
+  searchQuery,
+  onSearchChange,
+  onCreateGroup,
+  onShowFriendRequests,
+  loading
+}) {
   const { data: session } = useSession();
-  const { socket, on, off } = useSocket();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showQRModal, setShowQRModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [users, setUsers] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState(new Set());
-  const [friendRequestsCount, setFriendRequestsCount] = useState(0);
-  const [activeTab, setActiveTab] = useState('chats');
+  const [showActions, setShowActions] = useState(false);
 
-  useEffect(() => {
-    if (session) {
-      fetchUsers();
-      fetchFriendRequestsCount();
-    }
-  }, [session]);
-
-  // Socket event listeners for real-time updates
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleNewMessage = (data) => {
-      if (data.conversationId) {
-        window.dispatchEvent(new CustomEvent('conversation-updated', { detail: data }));
-      }
-    };
-
-    const handleConversationUpdated = (data) => {
-      if (data.conversationId) {
-        window.dispatchEvent(new CustomEvent('conversation-updated', { detail: data }));
-      }
-    };
-
-    const handleMessageDeleted = (data) => {
-      if (data.conversationId) {
-        window.dispatchEvent(new CustomEvent('message-deleted', { detail: data }));
-      }
-    };
-
-    const handleUserOnline = (data) => {
-      setOnlineUsers(prev => new Set([...prev, data.userId]));
-    };
-
-    const handleUserOffline = (data) => {
-      setOnlineUsers(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(data.userId);
-        return newSet;
-      });
-    };
-
-    const handleProfileUpdated = (data) => {
-      if (data.userId === session?.user?.id) {
-        window.location.reload();
-      }
-    };
-
-    const handleFriendRequest = (data) => {
-      setFriendRequestsCount(prev => prev + 1);
-    };
-
-    on('new-message', handleNewMessage);
-    on('conversation-updated', handleConversationUpdated);
-    on('message-deleted', handleMessageDeleted);
-    on('user-online', handleUserOnline);
-    on('user-offline', handleUserOffline);
-    on('user-profile-updated', handleProfileUpdated);
-    on('friend-request', handleFriendRequest);
-
-    return () => {
-      off('new-message', handleNewMessage);
-      off('conversation-updated', handleConversationUpdated);
-      off('message-deleted', handleMessageDeleted);
-      off('user-online', handleUserOnline);
-      off('user-offline', handleUserOffline);
-      off('user-profile-updated', handleProfileUpdated);
-      off('friend-request', handleFriendRequest);
-    };
-  }, [socket, on, off, session]);
-
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch('/api/users');
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data);
-      }
-    } catch (error) {
-      console.error('Error fetching users:', error);
+  const getChatDisplayName = (chat) => {
+    if (chat.isGroup) {
+      return chat.name || 'Group Chat';
+    } else {
+      const otherParticipant = chat.participants.find(
+        p => p._id !== session?.user?.id
+      );
+      return otherParticipant?.name || 'Unknown User';
     }
   };
 
-  const fetchFriendRequestsCount = async () => {
-    try {
-      const response = await fetch('/api/friend-requests/count');
-      if (response.ok) {
-        const data = await response.json();
-        setFriendRequestsCount(data.count);
-      }
-    } catch (error) {
-      console.error('Error fetching friend requests count:', error);
+  const getChatAvatar = (chat) => {
+    if (chat.isGroup) {
+      return chat.avatar || null;
+    } else {
+      const otherParticipant = chat.participants.find(
+        p => p._id !== session?.user?.id
+      );
+      return otherParticipant?.image || otherParticipant?.avatar || null;
     }
   };
 
-  const handleCreateConversationWithUser = async (userId) => {
-    try {
-      const response = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          participantIds: [userId],
-          isGroup: false
-        }),
-      });
-
-      if (response.ok) {
-        const newConversation = await response.json();
-        onSelectConversation(newConversation);
-      }
-    } catch (error) {
-      console.error('Error creating conversation:', error);
-    }
-  };
-
-  const formatLastMessage = (conversation) => {
-    if (!conversation.lastMessage) return 'No messages yet';
+  const getLastMessagePreview = (chat) => {
+    if (!chat.lastMessage) return 'No messages yet';
     
-    const { content, type, senderName } = conversation.lastMessage;
-    if (type === 'image') return `${senderName}: 📷 Image`;
-    if (type === 'video') return `${senderName}: 🎥 Video`;
-    if (type === 'audio') return `${senderName}: 🎵 Audio`;
-    if (type === 'document') return `${senderName}: 📄 Document`;
+    const sender = chat.participants.find(
+      p => p._id === chat.lastMessage.senderId
+    );
+    const senderName = sender?._id === session?.user?.id ? 'You' : sender?.name;
+    
+    let content = chat.lastMessage.content;
+    if (chat.lastMessage.type === 'image') {
+      content = '📷 Image';
+    } else if (chat.lastMessage.type === 'video') {
+      content = '🎥 Video';
+    } else if (chat.lastMessage.type === 'file') {
+      content = '📎 File';
+    }
+    
     return `${senderName}: ${content}`;
   };
 
-  const formatTime = (date) => {
-    if (!date) return '';
-    const now = new Date();
-    const messageDate = new Date(date);
-    const diffInHours = (now - messageDate) / (1000 * 60 * 60);
-    
-    if (diffInHours < 24) {
-      return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (diffInHours < 48) {
-      return 'Yesterday';
-    } else {
-      return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
+  const getUnreadCount = (chat) => {
+    const unreadCount = chat.unreadCounts?.find(
+      uc => uc.user === session?.user?.id
+    );
+    return unreadCount?.count || 0;
   };
 
-  const filteredConversations = conversations.filter(conv =>
-    conv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conv.participants?.some(p => p.user?.name?.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  const filteredUsers = users.filter(user =>
-    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="p-4 border-b border-gray-200">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded mb-4"></div>
+            <div className="h-10 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+        <div className="flex-1 p-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="animate-pulse mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="h-12 w-12 bg-gray-200 rounded-full"></div>
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <div className="w-full h-full bg-white flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="bg-green-600 text-white p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-bold">Chats</h1>
-            <div className="flex gap-2">
-              {isMobile ? (
-                <div className="relative">
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowMenu(!showMenu)}
-                    className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
-                  >
-                    <EllipsisVerticalIcon className="w-5 h-5" />
-                  </motion.button>
-                  
-                  <AnimatePresence>
-                    {showMenu && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
-                      >
-                        <div className="py-1">
-                          <button
-                            onClick={() => {
-                              setShowProfileModal(true);
-                              setShowMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                          >
-                            <UserCircleIcon className="w-4 h-4" />
-                            Profile
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowFriendRequestsModal(true);
-                              setShowMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                          >
-                            <BellIcon className="w-4 h-4" />
-                            Friend Requests
-                            {friendRequestsCount > 0 && (
-                              <span className="ml-auto bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                                {friendRequestsCount}
-                              </span>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowQRModal(true);
-                              setShowMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                          >
-                            <QrCodeIcon className="w-4 h-4" />
-                            Add Friends
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowGroupModal(true);
-                              setShowMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                          >
-                            <UserGroupIcon className="w-4 h-4" />
-                            Create Group
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              ) : (
-                <>
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowProfileModal(true)}
-                    className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
-                    title="Profile"
-                  >
-                    <UserCircleIcon className="w-5 h-5" />
-                  </motion.button>
-                  
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowFriendRequestsModal(true)}
-                    className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors relative"
-                    title="Friend Requests"
-                  >
-                    <BellIcon className="w-5 h-5" />
-                    {friendRequestsCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                        {friendRequestsCount}
-                      </span>
-                    )}
-                  </motion.button>
-                  
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowQRModal(true)}
-                    className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
-                    title="Add Friends"
-                  >
-                    <QrCodeIcon className="w-5 h-5" />
-                  </motion.button>
-                  
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowGroupModal(true)}
-                    className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
-                    title="Create Group"
-                  >
-                    <UserGroupIcon className="w-5 h-5" />
-                  </motion.button>
-                </>
-              )}
-            </div>
-          </div>
-          
-          {/* Search */}
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xl font-semibold text-gray-900">Chats</h1>
           <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white text-opacity-80" />
-            <input
-              type="text"
-              placeholder="Search or start new chat"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white bg-opacity-20 rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 text-white placeholder-white placeholder-opacity-80 text-sm"
-            />
+            <button
+              onClick={() => setShowActions(!showActions)}
+              className="p-2 rounded-lg hover:bg-gray-100"
+            >
+              <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
+            </button>
+            
+            {showActions && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-10"
+              >
+                <button
+                  onClick={() => {
+                    onCreateGroup();
+                    setShowActions(false);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                >
+                  <UserGroupIcon className="h-4 w-4 mr-2" />
+                  Create Group
+                </button>
+                <button
+                  onClick={() => {
+                    onShowFriendRequests();
+                    setShowActions(false);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                >
+                  <UserIcon className="h-4 w-4 mr-2" />
+                  Friend Requests
+                </button>
+              </motion.div>
+            )}
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex bg-gray-50 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('chats')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-              activeTab === 'chats'
-                ? 'text-green-600 border-b-2 border-green-600 bg-white'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            <ChatBubbleLeftRightIcon className="w-4 h-4 inline mr-2" />
-            Chats
-          </button>
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-              activeTab === 'users'
-                ? 'text-green-600 border-b-2 border-green-600 bg-white'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            <UserGroupIcon className="w-4 h-4 inline mr-2" />
-            Users
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          {activeTab === 'chats' && (
-            <div>
-              {filteredConversations.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <ChatBubbleLeftRightIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium mb-2">No conversations yet</p>
-                  <p className="text-sm">Start chatting with friends!</p>
-                </div>
-              ) : (
-                filteredConversations.map((conversation) => (
-                  <motion.div
-                    key={conversation.id}
-                    whileHover={{ backgroundColor: '#f8f9fa' }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => onSelectConversation(conversation)}
-                    className="flex items-center gap-3 p-4 border-b border-gray-100 cursor-pointer transition-colors hover:bg-gray-50"
-                  >
-                    <div className="relative">
-                      {conversation.isGroup ? (
-                        <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
-                          <UserGroupIcon className="w-6 h-6 text-white" />
-                        </div>
-                      ) : (
-                        <>
-                          <img
-                            src={conversation.participants?.[0]?.user?.image || '/default-avatar.png'}
-                            alt={conversation.participants?.[0]?.user?.name}
-                            className="w-12 h-12 rounded-full object-cover"
-                          />
-                          {onlineUsers.has(conversation.participants?.[0]?.user?.id) && (
-                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-900 truncate">
-                          {conversation.name || conversation.participants?.[0]?.user?.name || 'Unknown User'}
-                        </h3>
-                        {conversation.lastMessage && (
-                          <span className="text-xs text-gray-500">
-                            {formatTime(conversation.lastMessage.createdAt)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600 truncate">
-                        {formatLastMessage(conversation)}
-                      </p>
-                    </div>
-                  </motion.div>
-                ))
-              )}
-            </div>
-          )}
-
-          {activeTab === 'users' && (
-            <div>
-              {filteredUsers.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <UserGroupIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium mb-2">No users found</p>
-                  <p className="text-sm">Try a different search term</p>
-                </div>
-              ) : (
-                filteredUsers.map((user) => (
-                  <motion.div
-                    key={user.id}
-                    whileHover={{ backgroundColor: '#f8f9fa' }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleCreateConversationWithUser(user.id)}
-                    className="flex items-center gap-3 p-4 border-b border-gray-100 cursor-pointer transition-colors hover:bg-gray-50"
-                  >
-                    <div className="relative">
-                      <img
-                        src={user.image || '/default-avatar.png'}
-                        alt={user.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                      {onlineUsers.has(user.id) && (
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{user.name}</h3>
-                      <p className="text-sm text-gray-600 truncate">{user.email}</p>
-                    </div>
-                    <PlusIcon className="w-5 h-5 text-green-600" />
-                  </motion.div>
-                ))
-              )}
-            </div>
-          )}
+        {/* Search */}
+        <div className="relative">
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search chats?..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
         </div>
       </div>
 
-      {/* Modals */}
-      <QRCodeModal isOpen={showQRModal} onClose={() => setShowQRModal(false)} currentUser={session?.user} />
-      <UserProfile isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
-      <CreateGroupModal 
-        isOpen={showGroupModal} 
-        onClose={() => setShowGroupModal(false)}
-        onGroupCreated={(newGroup) => {
-          // Assuming conversations state is managed by the parent component
-          // For now, we'll just close the modal and let the parent handle updates
-          setShowGroupModal(false);
-        }}
-      />
-      <FriendRequestsModal 
-        isOpen={showFriendRequestsModal} 
-        onClose={() => setShowFriendRequestsModal(false)}
-      />
-    </>
+      {/* Chat List */}
+      <div className="flex-1 overflow-y-auto">
+        {chats?.length === 0 ? (
+          <div className="p-8 text-center">
+            <ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No chats yet
+            </h3>
+            <p className="text-gray-500 mb-6">
+              Start a conversation with friends or create a group
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={onCreateGroup}
+                className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <UserGroupIcon className="h-4 w-4 mr-2" />
+                Create Group
+              </button>
+              <button
+                onClick={onShowFriendRequests}
+                className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <UserIcon className="h-4 w-4 mr-2" />
+                Add Friends
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {chats?.map((chat) => {
+              const isSelected = selectedChat?._id === chat._id;
+              const unreadCount = getUnreadCount(chat);
+              
+              return (
+                <motion.button
+                  key={chat._id}
+                  onClick={() => onChatSelect(chat)}
+                  className={`w-full p-4 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 transition-colors ${
+                    isSelected ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                  }`}
+                  whileHover={{ x: 2 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <div className="flex items-center space-x-3">
+                    {/* Avatar */}
+                    <div className="relative flex-shrink-0">
+                      <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                        {getChatAvatar(chat) ? (
+                          <img
+                            src={getChatAvatar(chat)}
+                            alt={getChatDisplayName(chat)}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <UserIcon className="h-6 w-6 text-gray-400" />
+                        )}
+                      </div>
+                      {chat.isGroup && (
+                        <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-blue-500 rounded-full flex items-center justify-center">
+                          <UserGroupIcon className="h-2.5 w-2.5 text-white" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Chat Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <h3 className={`text-sm font-medium truncate ${
+                          unreadCount > 0 ? 'text-gray-900' : 'text-gray-700'
+                        }`}>
+                          {getChatDisplayName(chat)}
+                        </h3>
+                        {chat.lastMessage && (
+                          <span className="text-xs text-gray-500">
+                            {formatDistanceToNow(new Date(chat.lastMessage.createdAt), { addSuffix: true })}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-sm truncate ${
+                        unreadCount > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'
+                      }`}>
+                        {getLastMessagePreview(chat)}
+                      </p>
+                    </div>
+
+                    {/* Unread Badge */}
+                    {unreadCount > 0 && (
+                      <div className="flex-shrink-0">
+                        <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-500 text-xs font-medium text-white">
+                          {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

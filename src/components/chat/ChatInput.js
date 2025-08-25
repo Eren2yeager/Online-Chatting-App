@@ -1,237 +1,300 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
-  PaperAirplaneIcon, 
-  PhotoIcon, 
-  MicrophoneIcon, 
-  PaperClipIcon,
-  VideoCameraIcon,
-  DocumentIcon,
-  FaceSmileIcon
+  PaperClipIcon, 
+  FaceSmileIcon, 
+  PaperAirplaneIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
+import { useSocketEmit } from '../../lib/socket';
+import { Picker } from 'emoji-mart';
+// import 'emoji-mart/dist/basic.css';
 
-export default function ChatInput({ onSendMessage, onSendMedia }) {
+/**
+ * Chat input component with emoji picker and file upload
+ */
+export default function ChatInput({ onSendMessage, disabled = false }) {
+  const { emit } = useSocketEmit();
   const [message, setMessage] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-  const [showMediaMenu, setShowMediaMenu] = useState(false);
-  const mediaMenuRef = useRef(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
-  // Close media menu when clicking outside
+  // Auto-resize textarea
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (mediaMenuRef.current && !mediaMenuRef.current.contains(event.target)) {
-        setShowMediaMenu(false);
-      }
-    };
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [message]);
 
-    if (showMediaMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
+  // Typing indicators
+  useEffect(() => {
+    if (typing) {
+      emit('typing:start', { chatId: 'current' });
+    } else {
+      emit('typing:stop', { chatId: 'current' });
+    }
+  }, [typing, emit]);
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setMessage(value);
+    
+    // Typing indicator
+    if (value.length > 0 && !typing) {
+      setTyping(true);
+    } else if (value.length === 0 && typing) {
+      setTyping(false);
     }
 
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showMediaMenu]);
-
-  // Detect URLs in message
-  const detectLinks = (text) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.match(urlRegex) || [];
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (message.trim()) {
-      const links = detectLinks(message);
-      onSendMessage(message.trim(), links);
-      setMessage('');
+    // Clear typing indicator after delay
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    if (value.length > 0) {
+      typingTimeoutRef.current = setTimeout(() => {
+        setTyping(false);
+      }, 2000);
     }
   };
 
-  const uploadToCloudinary = async (file, type) => {
+  const handleSend = async () => {
+    if (!message.trim() && selectedFiles.length === 0) return;
+    if (disabled || uploading) return;
+
     try {
-      setIsUploading(true);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', type);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Upload failed');
+      setUploading(true);
+      
+      // Upload files first
+      let uploadedMedia = [];
+      if (selectedFiles.length > 0) {
+        uploadedMedia = await uploadFiles(selectedFiles);
       }
 
-      const result = await response.json();
-      return result.url;
+      // Send message
+      await onSendMessage(message, uploadedMedia);
+      
+      // Reset state
+      setMessage('');
+      setSelectedFiles([]);
+      setTyping(false);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      
     } catch (error) {
-      console.error('Upload error:', error);
-      alert('Failed to upload file. Please try again.');
-      return null;
+      console.error('Error sending message:', error);
     } finally {
-      setIsUploading(false);
+      setUploading(false);
     }
   };
 
-  const handleFileChange = async (e, type) => {
-    const file = e.target.files[0];
-    if (file) {
-      const mediaUrl = await uploadToCloudinary(file, type);
-      if (mediaUrl) {
-        onSendMedia(file, type, mediaUrl);
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const validFiles = files.filter(file => {
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      const allowedTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'video/mp4', 'video/mov', 'video/avi',
+        'application/pdf', 'text/plain',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ];
+      
+      return file.size <= maxSize && allowedTypes.includes(file.type);
+    });
+
+    setSelectedFiles(prev => [...prev, ...validFiles]);
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadFiles = async (files) => {
+    const uploadedMedia = [];
+
+    for (const file of files) {
+      try {
+        // Get upload signature
+        const signatureResponse = await fetch('/api/uploads/signature');
+        const signatureData = await signatureResponse.json();
+
+        if (!signatureData.success) {
+          throw new Error('Failed to get upload signature');
+        }
+
+        // Create form data for Cloudinary
+        const formData = new FormData();
+        Object.keys(signatureData.data).forEach(key => {
+          formData.append(key, signatureData.data[key]);
+        });
+        formData.append('file', file);
+
+        // Upload to Cloudinary
+        const uploadResponse = await fetch(
+          `https://api.cloudinary.com/v1_1/${signatureData.data.cloud_name}/auto/upload`,
+          {
+            method: 'POST',
+            body: formData,
+          }
+        );
+
+        const uploadResult = await uploadResponse.json();
+
+        if (uploadResult.secure_url) {
+          uploadedMedia.push({
+            url: uploadResult.secure_url,
+            publicId: uploadResult.public_id,
+            width: uploadResult.width,
+            height: uploadResult.height,
+            mime: file.type,
+            size: file.size,
+            filename: file.name,
+          });
+        }
+      } catch (error) {
+        console.error('Error uploading file:', error);
       }
-      e.target.value = null;
-      setShowMediaMenu(false);
     }
+
+    return uploadedMedia;
   };
 
-  const handleTyping = (e) => {
-    setMessage(e.target.value);
+  const addEmoji = (emoji) => {
+    setMessage(prev => prev + emoji.native);
+    setShowEmojiPicker(false);
+    textareaRef.current?.focus();
   };
-
-  const mediaOptions = [
-    {
-      icon: PhotoIcon,
-      label: 'Photo',
-      type: 'image',
-      accept: 'image/*',
-      color: 'text-green-600 hover:bg-green-50'
-    },
-    {
-      icon: VideoCameraIcon,
-      label: 'Video',
-      type: 'video',
-      accept: 'video/*',
-      color: 'text-purple-600 hover:bg-purple-50'
-    },
-    {
-      icon: MicrophoneIcon,
-      label: 'Audio',
-      type: 'audio',
-      accept: 'audio/*',
-      color: 'text-orange-600 hover:bg-orange-50'
-    },
-    {
-      icon: DocumentIcon,
-      label: 'Document',
-      type: 'document',
-      accept: '.pdf,.doc,.docx,.txt,.rtf,.odt,.pages,.epub,.mobi,.azw3,.cbr,.cbz,.zip,.rar,.7z,.tar,.gz,.mp3,.wav,.flac,.aac,.ogg,.m4a,.mp4,.avi,.mov,.wmv,.flv,.webm,.mkv,.3gp,.m4v,.jpg,.jpeg,.png,.gif,.bmp,.svg,.webp,.tiff,.ico,.psd,.ai,.eps,.raw,.cr2,.nef,.arw,.dng,.heic,.heif',
-      color: 'text-blue-600 hover:bg-blue-50'
-    }
-  ];
 
   return (
-    <div className="p-4">
-      <form onSubmit={handleSubmit} className="flex items-end gap-3">
-        {/* Media Upload Button */}
-        <div className="relative">
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            type="button"
-            onClick={() => setShowMediaMenu(!showMediaMenu)}
-            disabled={isUploading}
-            className="p-3 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors disabled:opacity-50"
-            title="Attach media"
-          >
-            <PaperClipIcon className="w-6 h-6" />
-          </motion.button>
-
-          {/* Media Menu Dropdown */}
-          <AnimatePresence>
-            {showMediaMenu && (
-              <motion.div
-                ref={mediaMenuRef}
-                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 p-4 min-w-[280px] z-50"
+    <div className="space-y-3">
+      {/* Selected Files Preview */}
+      {selectedFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedFiles.map((file, index) => (
+            <div
+              key={index}
+              className="relative bg-gray-100 rounded-lg p-2 flex items-center space-x-2"
+            >
+              <span className="text-sm text-gray-600 truncate max-w-32">
+                {file.name}
+              </span>
+              <button
+                onClick={() => removeFile(index)}
+                className="text-gray-400 hover:text-gray-600"
               >
-                <div className="grid grid-cols-2 gap-3">
-                  {mediaOptions.map((option) => (
-                    <motion.button
-                      key={option.type}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      type="button"
-                      onClick={() => {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = option.accept;
-                        input.onchange = (e) => handleFileChange(e, option.type);
-                        input.click();
-                        setShowMediaMenu(false);
-                      }}
-                      className={`flex flex-col items-center p-4 rounded-lg transition-colors ${option.color}`}
-                    >
-                      <option.icon className="w-8 h-8 mb-2" />
-                      <span className="text-sm font-medium">{option.label}</span>
-                    </motion.button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
         </div>
+      )}
 
-        {/* Message Input */}
+      {/* Input Area */}
+      <div className="flex items-end space-x-2">
+        {/* File Upload */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled || uploading}
+          className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <PaperClipIcon className="h-5 w-5" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,.pdf,.txt,.doc,.docx"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        {/* Text Input */}
         <div className="flex-1 relative">
           <textarea
+            ref={textareaRef}
             value={message}
-            onChange={handleTyping}
-            placeholder={isUploading ? "Uploading..." : "Type a message..."}
-            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 placeholder-gray-500 text-base resize-none max-h-32"
-            rows="1"
-            disabled={isUploading}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
+            onChange={handleInputChange}
+            onKeyPress={handleKeyPress}
+            placeholder="Type a message..."
+            disabled={disabled || uploading}
+            className="w-full resize-none border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            rows={1}
+            maxLength={2000}
           />
           
-          {/* Emoji Button */}
+          {/* Character Count */}
+          {message.length > 1800 && (
+            <div className="absolute bottom-1 right-2 text-xs text-gray-400">
+              {message.length}/2000
+            </div>
+          )}
+        </div>
+
+        {/* Emoji Picker */}
+        <div className="relative">
           <button
-            type="button"
-            className="absolute right-12 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            disabled={disabled || uploading}
+            className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <FaceSmileIcon className="w-5 h-5" />
+            <FaceSmileIcon className="h-5 w-5" />
           </button>
+          
+          {showEmojiPicker && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute bottom-full right-0 mb-2 z-10"
+            >
+              <Picker
+                onSelect={addEmoji}
+                theme="light"
+                set="apple"
+                showPreview={false}
+                showSkinTones={false}
+                emojiSize={20}
+                perLine={8}
+              />
+            </motion.div>
+          )}
         </div>
 
         {/* Send Button */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          type="submit"
-          disabled={!message.trim() || isUploading}
-          className={`p-3 rounded-full transition-colors ${
-            message.trim() && !isUploading
-              ? 'bg-green-600 text-white hover:bg-green-700'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-          }`}
+        <button
+          onClick={handleSend}
+          disabled={disabled || uploading || (!message.trim() && selectedFiles.length === 0)}
+          className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <PaperAirplaneIcon className="w-6 h-6" />
-        </motion.button>
-      </form>
+          {uploading ? (
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+          ) : (
+            <PaperAirplaneIcon className="h-5 w-5" />
+          )}
+        </button>
+      </div>
 
-      {/* Upload Progress */}
-      {isUploading && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-3"
-        >
-          <div className="flex items-center gap-2">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
-            <span className="text-sm text-gray-600">Uploading...</span>
-          </div>
-        </motion.div>
+      {/* Uploading Indicator */}
+      {uploading && (
+        <div className="text-sm text-gray-500 text-center">
+          Uploading files...
+        </div>
       )}
     </div>
   );
