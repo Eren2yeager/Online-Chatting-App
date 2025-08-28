@@ -81,9 +81,11 @@ export default function MessageContextMenu({
 
   const menuPosition = getMenuPosition();
 
+  if (!isOpen || !message) return null;
+
   return (
     <AnimatePresence>
-      {isOpen && (
+      {isOpen && message && (
         <motion.div
           ref={menuRef}
           initial={{ opacity: 0, scale: 0.95 }}
@@ -95,6 +97,7 @@ export default function MessageContextMenu({
             left: menuPosition.x,
             top: menuPosition.y,
           }}
+          onContextMenu={(e) => { e.preventDefault(); onClose(); }}
         >
           {/* Copy */}
           {message.text && (
@@ -128,7 +131,7 @@ export default function MessageContextMenu({
           )}
 
           {/* Delete for me */}
-          {isOwnMessage && (
+          {(
             <button
               onClick={() => handleAction('delete')}
               className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"

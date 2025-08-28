@@ -17,8 +17,10 @@ const UserSchema = new mongoose.Schema({
   emailVerified: {
     type: Date,
   },
+  // Primary profile image
   image: {
     type: String,
+    default: ''
   },
   // Unique handle for friending and sharing
   handle: {
@@ -36,15 +38,10 @@ const UserSchema = new mongoose.Schema({
     maxlength: 200,
     default: ''
   },
-  // User avatar URL
-  avatar: {
-    type: String,
-    default: ''
-  },
   // Online status
   status: {
     type: String,
-    enum: ['online', 'away', 'busy', 'offline'],
+    enum: ['online', 'offline'],
     default: 'offline'
   },
   // Last seen timestamp
@@ -61,21 +58,23 @@ const UserSchema = new mongoose.Schema({
   blocked: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }],
-  // Invite code for QR sharing
-  inviteCode: {
-    type: String,
-    unique: true,
-    required: true
-  }
+  }]
 }, {
   timestamps: true,
 });
 
-// Index for faster queries
+/**
+ * Why do we use indexes here?
+ * 
+ * Indexes are used in MongoDB (and thus in Mongoose schemas) to improve the speed of data retrieval operations on a database collection.
+ * By creating indexes on fields that are frequently queried (such as handle and email), 
+ * we ensure that lookups, searches, and uniqueness checks on these fields are much faster, especially as the user base grows.
+ * 
+ * - handle: Indexed for quick user lookup by handle (e.g., for friending, sharing, or searching users).
+ * - email: Indexed for fast authentication and to enforce uniqueness.
+ */
 UserSchema.index({ handle: 1 });
 UserSchema.index({ email: 1 });
-UserSchema.index({ inviteCode: 1 });
 
 // Generate unique handle if not provided
 UserSchema.pre('save', async function(next) {
@@ -89,10 +88,6 @@ UserSchema.pre('save', async function(next) {
       counter++;
     }
     this.handle = handle;
-  }
-  
-  if (!this.inviteCode) {
-    this.inviteCode = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   }
   
   next();

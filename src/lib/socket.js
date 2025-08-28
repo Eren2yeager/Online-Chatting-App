@@ -1,3 +1,4 @@
+"use client"
 import { io } from 'socket.io-client';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -28,7 +29,8 @@ export function SocketProvider({ children }) {
     // Create socket connection with authentication
     const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
       auth: {
-        token: session.accessToken || session.token
+        // Send user id as token for server-side authentication fallback
+        token: session?.user?.id,
       },
       transports: ['websocket', 'polling'],
       autoConnect: true,

@@ -1,167 +1,115 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../lib/auth';
-import connectDB from '../../../../lib/mongodb';
-import User from '../../../../models/User';
-import FriendRequest from '../../../../models/FriendRequest';
-import { friendRequestCreateSchema } from '../../../../lib/validators';
-import { rateLimit } from '../../../../lib/rateLimit';
+import { authOptions } from '@/lib/auth';
+import dbConnect from '@/lib/mongodb';
+import FriendRequest from '@/models/FriendRequest';
+import User from '@/models/User';
 
-/**
- * POST /api/friends/requests
- * Create a new friend request
- */
-export async function POST(request) {
+export async function GET() {
   try {
-    // Check authentication
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Apply rate limiting
-    const rateLimitResult = await rateLimit({
-      windowMs: 60 * 1000, // 1 minute
-      maxRequests: 10, // 10 friend requests per minute
-    })(request);
-    if (rateLimitResult) {
-      return rateLimitResult;
-    }
+    await dbConnect();
 
-    await connectDB();
+    // Get all friend requests involving the user, both incoming and outgoing, regardless of status
+    const [incomingRequests, outgoingRequests] = await Promise.all([
+      FriendRequest.find({ 
+        to: session.user.id
+      }).populate('from', 'name handle image status lastSeen'),
+      FriendRequest.find({ 
+        from: session.user.id
+      }).populate('to', 'name handle image status lastSeen')
+    ]);
 
-    // Validate request body
-    const body = await request.json();
-    let validatedData;
-    try {
-      validatedData = await friendRequestCreateSchema.parseAsync(body);
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error.errors },
-        { status: 400 }
-      );
-    }
-
-    const { toHandle, toEmail, message } = validatedData;
-    const fromUserId = session.user.id;
-
-    // Find target user
-    let targetUser;
-    if (toHandle) {
-      targetUser = await User.findOne({ handle: toHandle });
-    } else if (toEmail) {
-      targetUser = await User.findOne({ email: toEmail });
-    }
-
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    // Prevent self-friend request
-    if (targetUser._id.toString() === fromUserId) {
-      return NextResponse.json(
-        { error: 'Cannot send friend request to yourself' },
-        { status: 400 }
-      );
-    }
-
-    // Check if already friends
-    const fromUser = await User.findById(fromUserId);
-    if (fromUser.friends.includes(targetUser._id)) {
-      return NextResponse.json(
-        { error: 'Already friends with this user' },
-        { status: 400 }
-      );
-    }
-
-    // Check if friend request already exists
-    const existingRequest = await FriendRequest.findOne({
-      $or: [
-        { from: fromUserId, to: targetUser._id },
-        { from: targetUser._id, to: fromUserId }
-      ]
-    });
-
-    if (existingRequest) {
-      return NextResponse.json(
-        { error: 'Friend request already exists' },
-        { status: 400 }
-      );
-    }
-
-    // Create friend request
-    const friendRequest = await FriendRequest.create({
-      from: fromUserId,
-      to: targetUser._id,
-      message: message || '',
-    });
-
-    // Populate user details
-    await friendRequest.populate('from', 'name image handle');
-    await friendRequest.populate('to', 'name image handle');
-
+    // Return separate arrays for incoming and outgoing, including all statuses
     return NextResponse.json({
-      success: true,
-      data: friendRequest,
-    }, { status: 201 });
-
+      incoming: incomingRequests,
+      outgoing: outgoingRequests
+    });
   } catch (error) {
-    console.error('Error creating friend request:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Friend requests GET error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-/**
- * GET /api/friends/requests
- * Get friend requests for the authenticated user
- */
-export async function GET(request) {
+export async function POST(request) {
   try {
-    // Check authentication
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
+    const body = await request.json();
+    const { handle, message } = body;
 
-    const userId = session.user.id;
-    const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type') || 'received'; // 'received' or 'sent'
-
-    let friendRequests;
-    if (type === 'sent') {
-      friendRequests = await FriendRequest.find({ from: userId })
-        .populate('to', 'name image handle')
-        .sort({ createdAt: -1 });
-    } else {
-      friendRequests = await FriendRequest.find({ to: userId })
-        .populate('from', 'name image handle')
-        .sort({ createdAt: -1 });
+    if (!handle) {
+      return NextResponse.json({ error: 'Handle is required' }, { status: 400 });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: friendRequests,
+    await dbConnect();
+    
+    // Find the target user by handle
+    const targetUser = await User.findOne({ handle: handle.replace('@', '') });
+    if (!targetUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (targetUser._id.toString() === session.user.id) {
+      return NextResponse.json({ error: 'Cannot send friend request to yourself' }, { status: 400 });
+    }
+
+    // Check if current user is blocked by target
+    if (targetUser.blocked.includes(session.user.id)) {
+      return NextResponse.json({ error: 'You are blocked by this user' }, { status: 403 });
+    }
+
+    // Check if target user is blocked by current user
+    const currentUser = await User.findById(session.user.id);
+    if (currentUser.blocked.includes(targetUser._id)) {
+      return NextResponse.json({ error: 'Cannot send friend request to blocked user' }, { status: 400 });
+    }
+
+    // Check if they're already friends
+    if (currentUser.friends.includes(targetUser._id)) {
+      return NextResponse.json({ error: 'Already friends with this user' }, { status: 400 });
+    }
+
+    // Check if there's already a pending request
+    const existingPendingRequest = await FriendRequest.findOne({
+      $or: [
+        { from: session.user.id, to: targetUser._id, status: 'pending' },
+        { from: targetUser._id, to: session.user.id, status: 'pending' }
+      ]
     });
 
+    if (existingPendingRequest) {
+      return NextResponse.json({ error: 'Friend request already exists' }, { status: 400 });
+    }
+
+    // Create new friend request
+    const friendRequest = new FriendRequest({
+      from: session.user.id,
+      to: targetUser._id,
+      message: message || '',
+      status: 'pending'
+    });
+
+    await friendRequest.save();
+
+    // Populate the request for response
+    const populatedRequest = await FriendRequest.findById(friendRequest._id)
+      .populate('from', 'name handle image')
+      .populate('to', 'name handle image');
+
+    return NextResponse.json(populatedRequest, { status: 201 });
   } catch (error) {
-    console.error('Error fetching friend requests:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Friend request POST error:', error);
+    if (error.message === 'Friend request already exists between these users') {
+      return NextResponse.json({ error: 'Friend request already exists' }, { status: 400 });
+    }
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

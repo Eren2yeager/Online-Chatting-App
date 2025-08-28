@@ -1,17 +1,17 @@
 
-const dotenv = require('dotenv');
+import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
-const { createServer } = require('http');
-const { Server } = require('socket.io');
-const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
-// Import models (CommonJS require for local files)
-const User = require('../src/models/User');
-const Chat = require('../src/models/Chat');
-const Message = require('../src/models/Message');
-const Notification = require('../src/models/Notification');
+// Import models (ES modules)
+import User from '../src/models/User.js';
+import Chat from '../src/models/Chat.js';
+import Message from '../src/models/Message.js';
+import Notification from '../src/models/Notification.js';
 
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -50,9 +50,20 @@ const userRooms = new Map();
  */
 const authenticateSocket = async (token) => {
   try {
-    const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-    const user = await User.findById(decoded.userId);
-    return user;
+    // Accept direct userId token (from client) as a simple fallback
+    if (token && mongoose.isValidObjectId(token)) {
+      const user = await User.findById(token);
+      if (user) return user;
+    }
+    // Otherwise try JWT
+    if (token) {
+      const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
+      if (decoded?.userId) {
+        const user = await User.findById(decoded.userId);
+        if (user) return user;
+      }
+    }
+    return null;
   } catch (error) {
     console.error('Socket authentication error:', error);
     return null;
@@ -155,6 +166,7 @@ io.on('connection', async (socket) => {
   socket.on('message:new', async (data) => {
     try {
       const { chatId, text, media, replyTo } = data;
+      if (!chatId) return;
       
       // Create message in database
       const message = await Message.create({
@@ -178,7 +190,7 @@ io.on('connection', async (socket) => {
         }
       });
       
-      // Emit to chat room
+      // Emit to chat room (server is the single source of truth, client shouldn't also POST)
       io.to(`chat:${chatId}`).emit('message:new', {
         message,
         chatId

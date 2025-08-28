@@ -1,14 +1,9 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import User from '../models/User';
-import connectDB from './mongodb';
+import User from '../models/User.js';
+import connectDB from './mongodb.js';
 
-// Make sure to match the User schema requirements:
-// - name: required
-// - email: required, unique
-// - handle: required, unique, 3-20 chars, /^[a-zA-Z0-9_-]+$/
-// - inviteCode: required, unique
-// - image, bio, avatar, status, lastSeen, friends, blocked
+
 
 export const authOptions = {
   providers: [
@@ -41,21 +36,14 @@ export const authOptions = {
             counter++;
           }
 
-          // Generate a unique inviteCode
-          let inviteCode;
-          let inviteTries = 0;
-          do {
-            inviteCode = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            inviteTries++;
-            if (inviteTries > 5) throw new Error('Could not generate unique invite code');
-          } while (await User.findOne({ inviteCode }));
+ 
 
           dbUser = await User.create({
             email: user.email,
             name: user.name || user.email.split('@')[0],
             image: user.image || '',
             handle,
-            inviteCode,
+    
             emailVerified: profile?.email_verified ? new Date() : null,
             // bio, avatar, status, lastSeen, friends, blocked will use schema defaults
           });
@@ -82,8 +70,7 @@ export const authOptions = {
           session.user.handle = dbUser.handle;
           session.user.bio = dbUser.bio;
           session.user.status = dbUser.status;
-          session.user.inviteCode = dbUser.inviteCode;
-          session.user.avatar = dbUser.avatar;
+          session.user.image = dbUser.image;
         }
         return session;
       } catch (error) {

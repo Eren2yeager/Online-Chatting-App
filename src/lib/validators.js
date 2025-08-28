@@ -35,12 +35,14 @@ export const friendRequestUpdateSchema = z.object({
 export const chatCreateSchema = z.object({
   isGroup: z.boolean().default(false),
   name: z.string().min(1).max(50).optional(),
-  participants: z.array(z.string().min(1)).min(2),
+  // Allow min 1 because the API will include the current user automatically
+  participants: z.array(z.string().min(1)).min(1),
 });
 
 export const chatUpdateSchema = z.object({
   name: z.string().min(1).max(50).optional(),
   avatar: z.string().url().optional(),
+  image: z.string().url().optional(), // allow "image" alias from client
 });
 
 export const chatMemberSchema = z.object({

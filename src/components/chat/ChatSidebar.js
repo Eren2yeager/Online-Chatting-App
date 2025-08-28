@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import { 
   MagnifyingGlassIcon, 
   PlusIcon, 
@@ -12,7 +13,7 @@ import {
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
-
+import dateFormatter from '@/functions/dateFormattor';
 /**
  * Chat sidebar component displaying chat list with search and actions
  */
@@ -29,7 +30,7 @@ export default function ChatSidebar({
 }) {
   const { data: session } = useSession();
   const [showActions, setShowActions] = useState(false);
-
+  const router = useRouter();
   const getChatDisplayName = (chat) => {
     if (chat.isGroup) {
       return chat.name || 'Group Chat';
@@ -55,21 +56,22 @@ export default function ChatSidebar({
   const getLastMessagePreview = (chat) => {
     if (!chat.lastMessage) return 'No messages yet';
     
-    const sender = chat.participants.find(
-      p => p._id === chat.lastMessage.senderId
-    );
-    const senderName = sender?._id === session?.user?.id ? 'You' : sender?.name;
+    const senderId = typeof chat.lastMessage.senderId === 'object' ? chat.lastMessage.senderId._id : chat.lastMessage.senderId;
+    const sender = chat.participants.find(p => p._id === senderId);
+    const senderName = senderId === session?.user?.id ? 'You' : (sender?.name || '');
     
     let content = chat.lastMessage.content;
     if (chat.lastMessage.type === 'image') {
-      content = '📷 Image';
+      content = 'sent an Image';
     } else if (chat.lastMessage.type === 'video') {
-      content = '🎥 Video';
+      content = 'sent a Video';
+    } else if (chat.lastMessage.type === 'audio') {
+      content = 'sent a Audio';
     } else if (chat.lastMessage.type === 'file') {
-      content = '📎 File';
+      content = 'sent a File';
     }
     
-    return `${senderName}: ${content}`;
+    return `${senderName ? senderName + ': ' : ''}${content}`;
   };
 
   const getUnreadCount = (chat) => {
@@ -108,8 +110,9 @@ export default function ChatSidebar({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
+      
       <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center justify-between mb-4">
+        {/* <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold text-gray-900">Chats</h1>
           <div className="relative">
             <button
@@ -149,17 +152,17 @@ export default function ChatSidebar({
               </motion.div>
             )}
           </div>
-        </div>
+        </div> */}
 
         {/* Search */}
         <div className="relative">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search chats?..."
+            placeholder="Search conversations..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2 border text-black border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
       </div>
@@ -167,24 +170,18 @@ export default function ChatSidebar({
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
         {chats?.length === 0 ? (
-          <div className="p-8 text-center">
-            <ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <div className="p-8 flex flex-col justify-center items-center h-full w-full">
+            <ChatBubbleLeftRightIcon className="mx-auto h-15 w-15 p-4 text-white  bg-gradient-to-r rounded-full from-blue-500 to-purple-600" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No chats yet
+              No Conversations yet
             </h3>
-            <p className="text-gray-500 mb-6">
-              Start a conversation with friends or create a group
-            </p>
+    
             <div className="space-y-3">
+
               <button
-                onClick={onCreateGroup}
-                className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <UserGroupIcon className="h-4 w-4 mr-2" />
-                Create Group
-              </button>
-              <button
-                onClick={onShowFriendRequests}
+                onClick={()=>{
+                  router.push("/friends")
+                }}
                 className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 <UserIcon className="h-4 w-4 mr-2" />
@@ -202,11 +199,10 @@ export default function ChatSidebar({
                 <motion.button
                   key={chat._id}
                   onClick={() => onChatSelect(chat)}
-                  className={`w-full p-4 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 transition-colors ${
-                    isSelected ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                  className={`w-full p-4 text-left hover:bg-gray-50 focus:outline-none rounded-sm focus:bg-gray-50 transition-colors ${
+                    isSelected ? 'bg-blue-50 ' : ''
                   }`}
-                  whileHover={{ x: 2 }}
-                  whileTap={{ scale: 0.98 }}
+              
                 >
                   <div className="flex items-center space-x-3">
                     {/* Avatar */}
@@ -219,12 +215,18 @@ export default function ChatSidebar({
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <UserIcon className="h-6 w-6 text-gray-400" />
+                          <div className="h-6 w-6 text-gray-400">
+                          {chat.isGroup ? (
+                            <UserGroupIcon className="h-6 w-6 text-blue-400" />
+                          ) : (
+                            <UserIcon className="h-6 w-6 text-gray-400" />
+                          )}
+                        </div>
                         )}
                       </div>
                       {chat.isGroup && (
-                        <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-blue-500 rounded-full flex items-center justify-center">
-                          <UserGroupIcon className="h-2.5 w-2.5 text-white" />
+                        <div className="absolute bottom-0 right-0 h-5 w-5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                          <UserGroupIcon className="h-4 w-4 text-white" />
                         </div>
                       )}
                     </div>
@@ -239,14 +241,17 @@ export default function ChatSidebar({
                         </h3>
                         {chat.lastMessage && (
                           <span className="text-xs text-gray-500">
-                            {formatDistanceToNow(new Date(chat.lastMessage.createdAt), { addSuffix: true })}
+                            {dateFormatter(new Date(chat.lastMessage.createdAt))}
                           </span>
                         )}
                       </div>
                       <p className={`text-sm truncate ${
                         unreadCount > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'
                       }`}>
+                        <span className='text-xs'> 
+
                         {getLastMessagePreview(chat)}
+                        </span>
                       </p>
                     </div>
 

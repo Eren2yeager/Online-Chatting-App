@@ -10,7 +10,7 @@ const ChatSchema = new mongoose.Schema({
   // Chat avatar (for group chats)
   avatar: {
     type: String,
-    default: ''
+    default: '/user.jpg'
   },
   // Whether this is a group chat or 1:1 chat
   isGroup: {

@@ -8,17 +8,21 @@ import {
   EllipsisVerticalIcon,
   PaperClipIcon,
   EmojiHappyIcon,
-  PaperAirplaneIcon
+  PaperAirplaneIcon,
+  UserGroupIcon,
+  UserIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline';
 import { useSocket, useSocketEmit, useSocketListener, useTypingIndicator } from '../../lib/socket';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import MessageContextMenu from './MessageContextMenu';
-
+import ManageGroupModal from './ManageGroupModal';
+import { useRouter } from 'next/navigation';
 /**
  * Chat window component for displaying and sending messages
  */
-export default function ChatWindow({ chat, onBack, onNewMessage }) {
+export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }) {
   const { data: session } = useSession();
   const { socket, isConnected } = useSocket();
   const { emit } = useSocketEmit();
@@ -29,9 +33,15 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuMessage, setContextMenuMessage] = useState(null);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [showActions, setShowActions] = useState(false);
+  const [showManageGroup, setShowManageGroup] = useState(false);
+  const isAdmin = (chat?.admins || []).some(a => a._id === session?.user?.id);
+  const isCreator = chat?.createdBy?._id === session?.user?.id;
 
   const typingUsers = useTypingIndicator(chat._id);
+ 
 
+  const router = useRouter()
   // Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,7 +62,7 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
   useSocketListener('message:new', (data) => {
     if (data.chatId === chat._id) {
       setMessages(prev => [...prev, data.message]);
-      onNewMessage(data.message);
+      onNewMessage?.(data.message);
     }
   });
 
@@ -136,21 +146,8 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
         media,
       };
 
-      // Emit via socket for real-time delivery
+       // Emit via socket for real-time delivery and persistence on server
       emit('message:new', messageData);
-
-      // Also send via API for persistence
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(messageData),
-      });
-
-      if (!response.ok) {
-        console.error('Failed to send message');
-      }
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -173,9 +170,7 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
           deleteForEveryone: true,
         });
         break;
-      case 'reply':
-        // Handle reply functionality
-        break;
+
       default:
         break;
     }
@@ -187,6 +182,16 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
     setContextMenuMessage(message);
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
+  };
+
+  const getOtherParticipantHandle = () => {
+    if (chat.isGroup) {
+      return;
+    }
+    const otherParticipant = chat.participants.find(
+      p => p._id !== session?.user?.id
+    );
+    return otherParticipant?.handle;
   };
 
   const getChatDisplayName = () => {
@@ -214,7 +219,7 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 relative rounded-b-lg ">
         <div className="flex items-center space-x-3">
           <button
             onClick={onBack}
@@ -223,17 +228,28 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
             <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
           </button>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 cursor-pointer"
+            onClick={() => {
+              if (!chat.isGroup) {
+                router.push(`/profile/${getOtherParticipantHandle()}`);
+              }
+            }}
+          >
             <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
               {getChatAvatar() ? (
                 <img
                   src={getChatAvatar()}
                   alt={getChatDisplayName()}
                   className="h-full w-full object-cover"
+                
                 />
               ) : (
                 <div className="h-6 w-6 text-gray-400">
-                  {chat.isGroup ? '👥' : '👤'}
+                  {chat.isGroup ? (
+                    <UserGroupIcon className="h-6 w-6 text-blue-400" />
+                  ) : (
+                    <UserIcon className="h-6 w-6 text-gray-400" />
+                  )}
                 </div>
               )}
             </div>
@@ -241,18 +257,41 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
               <h2 className="text-lg font-semibold text-gray-900">
                 {getChatDisplayName()}
               </h2>
-              {typingUsers.length > 0 && (
-              <p className="text-sm text-gray-500">
-                  {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
-              </p>
-              )}
             </div>
           </div>
         </div>
 
-        <button className="p-2 rounded-lg hover:bg-gray-100">
-          <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
-        </button>
+        <div className="relative">
+          {chat.isGroup && isAdmin &&
+          
+          <button className="p-2 rounded-lg hover:bg-gray-100" onClick={() => setShowActions(v => !v)}>
+            <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
+          </button>
+          }
+          <AnimatePresence>
+            {showActions && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-10"
+                tabIndex={0}
+                onBlur={() => setShowActions(false)}
+                onFocus={() => {}} // to ensure tabIndex works for focus/blur
+                autoFocus
+              >
+                {chat.isGroup && isAdmin && (
+                  <button
+                    onClick={() => { setShowActions(false); setShowManageGroup(true); }}
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                  >
+                    ⚙️ Manage Group
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Messages */}
@@ -272,23 +311,23 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
               </button>
             )}
             
-          <AnimatePresence>
-            {messages.map((message, index) => (
-              <motion.div
+            <AnimatePresence>
+              {messages.map((message) => (
+                <motion.div
                   key={message._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ duration: 0.2 }}
-              >
-                <ChatMessage
-                  message={message}
+                >
+                  <ChatMessage
+                    message={message}
                     isOwn={message.sender._id === session?.user?.id}
                     onContextMenu={(e) => handleMessageContextMenu(e, message)}
-                />
-              </motion.div>
-            ))}
-          </AnimatePresence>
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
             
             <div ref={messagesEndRef} />
           </>
@@ -296,10 +335,11 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-200 p-4">
+      <div className="border-t border-gray-200 rounded-t-lg p-2 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)]" onContextMenu={() => setShowContextMenu(false)}>
         <ChatInput
           onSendMessage={handleSendMessage}
           disabled={!isConnected}
+          chatId={chat._id}
         />
       </div>
 
@@ -312,6 +352,33 @@ export default function ChatWindow({ chat, onBack, onNewMessage }) {
         message={contextMenuMessage}
         isOwnMessage={contextMenuMessage?.sender._id === session?.user?.id}
       />
+
+      {/* Manage Members Modal */}
+      {/* {chat.isGroup && (
+        <ManageMembersModal
+          isOpen={showManageMembers}
+          onClose={() => setShowManageMembers(false)}
+          chat={chat}
+          onUpdated={(updatedChat) => {
+            setShowManageMembers(false);
+            onChatUpdated?.(updatedChat);
+          }}
+        />
+      )} */}
+
+      {chat.isGroup && isAdmin && (
+        <ManageGroupModal
+          isOpen={showManageGroup}
+          onClose={() => setShowManageGroup(false)}
+          chat={chat}
+          isCreator={isCreator}
+          isAdmin={isAdmin}
+          onUpdated={(updatedChat) => {
+            setShowManageGroup(false);
+            onChatUpdated?.(updatedChat);
+          }}
+        />
+      )}
     </div>
   );
 }

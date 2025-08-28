@@ -53,7 +53,7 @@ export async function GET(request, { params }) {
       name: user.name,
       handle: user.handle,
       image: user.image,
-      avatar: user.avatar,
+
       status: user.status,
       lastSeen: user.lastSeen,
       createdAt: user.createdAt,
@@ -134,7 +134,7 @@ export async function PATCH(request, { params }) {
     }
 
     // Update allowed fields
-    const allowedFields = ['name', 'bio', 'status', 'avatar'];
+    const allowedFields = ['name', 'bio', 'status', 'image'];
     for (const field of allowedFields) {
       if (validatedData[field] !== undefined) {
         user[field] = validatedData[field];
@@ -154,7 +154,7 @@ export async function PATCH(request, { params }) {
       name: user.name,
       handle: user.handle,
       image: user.image,
-      avatar: user.avatar,
+
       bio: user.bio,
       status: user.status,
       lastSeen: user.lastSeen,

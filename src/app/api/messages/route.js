@@ -6,7 +6,7 @@ import User from '../../../models/User';
 import Chat from '../../../models/Chat';
 import Message from '../../../models/Message';
 import { messageCreateSchema } from '../../../lib/validators';
-import { messageRateLimit } from '../../../lib/rateLimit';
+// Removed express-style rateLimit usage; not compatible with Next.js App Router
 
 /**
  * POST /api/messages
@@ -23,11 +23,7 @@ export async function POST(request) {
       );
     }
 
-    // Apply rate limiting
-    const rateLimitResult = await messageRateLimit(request);
-    if (rateLimitResult) {
-      return rateLimitResult;
-    }
+    // Note: rate limiting disabled here for compatibility
 
     await connectDB();
 

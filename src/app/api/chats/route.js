@@ -5,7 +5,7 @@ import connectDB from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Chat from '../../../models/Chat';
 import { chatCreateSchema } from '../../../lib/validators';
-import { rateLimit } from '../../../lib/rateLimit';
+// Removed express-style rateLimit middleware usage; not compatible with NextRequest
 
 /**
  * POST /api/chats
@@ -22,14 +22,8 @@ export async function POST(request) {
       );
     }
 
-    // Apply rate limiting
-    const rateLimitResult = await rateLimit({
-      windowMs: 60 * 1000, // 1 minute
-      maxRequests: 5, // 5 chat creations per minute
-    })(request);
-    if (rateLimitResult) {
-      return rateLimitResult;
-    }
+    // Note: Rate limiting is disabled here because the express-style middleware
+    // in lib/rateLimit is not compatible with Next.js App Router handlers.
 
     await connectDB();
 
@@ -67,7 +61,7 @@ export async function POST(request) {
       const currentUser = await User.findById(userId);
       const otherUser = participantUsers.find(p => p._id.toString() !== userId);
       
-      if (!currentUser.friends.includes(otherUser._id)) {
+      if (!currentUser.friends.some(friendId => friendId.toString() === otherUser._id.toString())) {
         return NextResponse.json(
           { error: 'Can only create 1:1 chats with friends' },
           { status: 400 }
@@ -79,7 +73,7 @@ export async function POST(request) {
     if (!isGroup && participants.length === 2) {
       const existingChat = await Chat.findOne({
         isGroup: false,
-        participants: { $all: participants, $size: participants.length }
+        participants: { $all: participants }
       });
 
       if (existingChat) {

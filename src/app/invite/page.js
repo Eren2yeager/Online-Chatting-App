@@ -1,295 +1,287 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { QRCodeSVG } from 'qrcode.react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { UserIcon, QrCodeIcon, ShareIcon } from '@heroicons/react/24/outline';
+import { 
+  QrCodeIcon, 
+  ClipboardDocumentIcon,
+  ShareIcon,
+  UserPlusIcon,
+  ArrowLeftIcon
+} from '@heroicons/react/24/outline';
+import { QRCodeSVG } from 'qrcode.react';
+import toast from 'react-hot-toast';
 
-/**
- * Main invite page component
- */
 export default function InvitePage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
-      </div>
-    }>
-      <InvitePageContent />
-    </Suspense>
-  );
-}
-
-/**
- * Invite page content component
- * Handles both viewing own invite code and processing incoming invites
- */
-function InvitePageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [inviteCode, setInviteCode] = useState('');
-  const [targetUser, setTargetUser] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  const incomingCode = searchParams.get('code');
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showQR, setShowQR] = useState(true);
 
   useEffect(() => {
-    if (status === 'loading') return;
-
-    if (!session) {
-      router.push('/signin');
-      return;
+    if (status === 'unauthenticated') {
+      router.push('/');
     }
+  }, [status, router]);
 
-    // If there's an incoming invite code, process it
-    if (incomingCode) {
-      processIncomingInvite(incomingCode);
-    } else {
-      // Get user's own invite code
-      fetchUserInviteCode();
+  useEffect(() => {
+    if (session) {
+      fetchUserProfile();
     }
-  }, [session, status, incomingCode]);
+  }, [session]);
 
-  const fetchUserInviteCode = async () => {
+  const fetchUserProfile = async () => {
     try {
-      const response = await fetch(`/api/users/${session.user.id}`);
-      const data = await response.json();
-      
-      if (data.success) {
-        setInviteCode(data.data.inviteCode);
+      const response = await fetch('/api/users/profile');
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
       }
     } catch (error) {
-      console.error('Error fetching invite code:', error);
-    }
-  };
-
-  const processIncomingInvite = async (code) => {
-    try {
-      setLoading(true);
-      setError('');
-
-      const response = await fetch(`/api/users/invite/${code}`);
-      const data = await response.json();
-
-      if (data.success) {
-        setTargetUser(data.data);
-      } else {
-        setError(data.error || 'Invalid invite code');
-      }
-    } catch (error) {
-      setError('Failed to process invite code');
+      console.error('Error fetching profile:', error);
+      toast.error('Failed to load profile');
     } finally {
       setLoading(false);
     }
   };
 
-  const sendFriendRequest = async () => {
-    if (!targetUser) return;
-
-    try {
-      setLoading(true);
-      setError('');
-
-      const response = await fetch('/api/friends/requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          toHandle: targetUser.handle,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setSuccess('Friend request sent successfully!');
-        setTimeout(() => {
-          router.push('/chats');
-        }, 2000);
-      } else {
-        setError(data.error || 'Failed to send friend request');
-      }
-    } catch (error) {
-      setError('Failed to send friend request');
-    } finally {
-      setLoading(false);
-    }
+  const copyProfileHandle = () => {
+    navigator.clipboard.writeText(`@${user.handle}`);
+    toast.success('Profile handle copied to clipboard!');
   };
 
-  const shareInvite = async () => {
-    const inviteUrl = `${window.location.origin}/invite?code=${inviteCode}`;
+  const copyProfileLink = () => {
+    const profileUrl = `${window.location.origin}/invite/${user.handle}`;
+    navigator.clipboard.writeText(profileUrl);
+    toast.success('Profile link copied to clipboard!');
+  };
+
+  const shareProfile = async () => {
+    const profileUrl = `${window.location.origin}/invite/${user.handle}`;
     
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Join me on ChatApp!',
-          text: `Hi! I'm using ChatApp. Join me by scanning this QR code or clicking the link: ${inviteUrl}`,
-          url: inviteUrl,
+          title: `Add ${user.name} as a friend`,
+          text: `Scan my QR code or use my handle: @${user.handle}`,
+          url: profileUrl
         });
       } catch (error) {
-        console.log('Share cancelled');
+        console.log('Error sharing:', error);
+        copyProfileLink();
       }
     } else {
-      // Fallback to copying to clipboard
-      try {
-        await navigator.clipboard.writeText(inviteUrl);
-        setSuccess('Invite link copied to clipboard!');
-        setTimeout(() => setSuccess(''), 3000);
-      } catch (error) {
-        setError('Failed to copy invite link');
-      }
+      copyProfileLink();
     }
   };
 
-  if (status === 'loading') {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
-  if (!session) {
-    return null;
-  }
+  if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md mx-auto">
+    <div className="h-full bg-gradient-to-br from-blue-50 to-indigo-100 py-8 overflow-y-auto">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-8"
+        >
+          <div className="flex items-center justify-center mb-4">
+            <button
+              onClick={() => router.back()}
+              className="mr-4 p-2 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <ArrowLeftIcon className="w-6 h-6" />
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900">Invite Friends</h1>
+          </div>
+          <p className="text-gray-600">Share your profile and connect with others</p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* QR Code Section */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-2xl shadow-xl p-8"
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <QrCodeIcon className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">QR Code</h2>
+              <p className="text-gray-600 mb-6">
+                Scan this QR code to quickly add {user.name} as a friend
+              </p>
+              
+              {showQR && (
+                <div className="bg-white p-6 rounded-lg border-2 border-gray-200 inline-block mb-6">
+                  <QRCodeSVG 
+                    value={`${window.location.origin}/invite/${user.handle}`}
+                    size={200}
+                    level="H"
+                    includeMargin={true}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => setShowQR(!showQR)}
+                  className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  {showQR ? 'Hide QR Code' : 'Show QR Code'}
+                </button>
+                <button
+                  onClick={shareProfile}
+                  className="w-full bg-purple-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-purple-700 transition-colors flex items-center justify-center"
+                >
+                  <ShareIcon className="w-5 h-5 mr-2" />
+                  Share Profile
+                </button>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Invite Code Section */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-2xl shadow-xl p-8"
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <UserPlusIcon className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Profile Handle</h2>
+                      <p className="text-gray-600 mb-6">
+          Share your profile handle with friends to connect instantly
+        </p>
+
+              <div className="bg-gray-50 p-6 rounded-lg border-2 border-gray-200 mb-6">
+                <div className="text-sm text-gray-600 mb-2">Your profile handle:</div>
+                <div className="font-mono text-2xl font-bold text-gray-900 break-all">
+                  @{user.handle}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={copyProfileHandle}
+                  className="w-full bg-green-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center"
+                >
+                  <ClipboardDocumentIcon className="w-5 h-5 mr-2" />
+                  Copy Handle
+                </button>
+                <button
+                  onClick={copyProfileLink}
+                  className="w-full bg-indigo-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center justify-center"
+                >
+                  <ClipboardDocumentIcon className="w-5 h-5 mr-2" />
+                  Copy Profile Link
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Instructions Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="bg-white rounded-2xl shadow-xl p-8"
+          transition={{ delay: 0.3 }}
+          className="mt-12 bg-white rounded-2xl shadow-xl p-8"
         >
-          {incomingCode ? (
-            // Incoming invite view
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">How to Use</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
-              <QrCodeIcon className="mx-auto h-16 w-16 text-blue-500 mb-6" />
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                Friend Invitation
-              </h1>
-              <p className="text-gray-600 mb-8">
-                Someone wants to connect with you on ChatApp
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <span className="text-blue-600 font-bold text-lg">1</span>
+              </div>
+              <h4 className="font-medium text-gray-900 mb-2">Share Your Code</h4>
+              <p className="text-gray-600 text-sm">
+                Share your QR code or invite code with friends through any platform
               </p>
-
-              {loading ? (
-                <div className="animate-pulse">
-                  <div className="h-32 w-32 mx-auto bg-gray-200 rounded-full mb-4"></div>
-                  <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
-                </div>
-              ) : targetUser ? (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-center space-x-4">
-                    <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center">
-                      {targetUser.image ? (
-                        <img
-                          src={targetUser.image}
-                          alt={targetUser.name}
-                          className="h-16 w-16 rounded-full object-cover"
-                        />
-                      ) : (
-                        <UserIcon className="h-8 w-8 text-gray-400" />
-                      )}
-                    </div>
-                    <div className="text-left">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {targetUser.name}
-                      </h3>
-                      <p className="text-sm text-gray-500">@{targetUser.handle}</p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={sendFriendRequest}
-                    disabled={loading}
-                    className="w-full bg-blue-500 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {loading ? 'Sending...' : 'Accept Invitation'}
-                  </button>
-                </div>
-              ) : error ? (
-                <div className="text-center">
-                  <div className="text-red-500 mb-4">{error}</div>
-                  <button
-                    onClick={() => router.push('/chats')}
-                    className="text-blue-500 hover:text-blue-600 font-medium"
-                  >
-                    Go to Chats
-                  </button>
-                </div>
-              ) : null}
             </div>
-          ) : (
-            // Own invite code view
             <div className="text-center">
-              <QrCodeIcon className="mx-auto h-16 w-16 text-blue-500 mb-6" />
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                Invite Friends
-              </h1>
-              <p className="text-gray-600 mb-8">
-                Share your QR code or invite link with friends
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <span className="text-green-600 font-bold text-lg">2</span>
+              </div>
+              <h4 className="font-medium text-gray-900 mb-2">Friends Scan/Enter</h4>
+              <p className="text-gray-600 text-sm">
+                Friends can scan your QR code or enter your invite code
               </p>
+            </div>
+            <div className="text-center">
+              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <span className="text-purple-600 font-bold text-lg">3</span>
+              </div>
+              <h4 className="font-medium text-gray-900 mb-2">Connect Instantly</h4>
+              <p className="text-gray-600 text-sm">
+                Start chatting and sharing moments with your new friends
+              </p>
+            </div>
+          </div>
+        </motion.div>
 
-              {inviteCode && (
-                <div className="space-y-6">
-                  <div className="bg-gray-50 rounded-lg p-6">
-                    <QRCodeSVG
-                      value={`${window.location.origin}/invite?code=${inviteCode}`}
-                      size={200}
-                      className="mx-auto"
-                      level="M"
-                      includeMargin={true}
-                    />
-                  </div>
-
-                  <div className="space-y-4">
-                    <button
-                      onClick={shareInvite}
-                      className="w-full bg-blue-500 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors flex items-center justify-center space-x-2"
-                    >
-                      <ShareIcon className="h-5 w-5" />
-                      <span>Share Invite</span>
-                    </button>
-
-                    <button
-                      onClick={() => router.push('/chats')}
-                      className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
-                    >
-                      Back to Chats
-                    </button>
-                  </div>
-                </div>
+        {/* Profile Preview */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="mt-8 bg-white rounded-2xl shadow-xl p-8"
+        >
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">Your Profile Preview</h3>
+          <div className="flex items-center space-x-6">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
+                {user.image ? (
+                  <img 
+                    src={user.image} 
+                    alt={user.name} 
+                    className="w-20 h-20 rounded-full object-cover"
+                  />
+                ) : (
+                  user.name.charAt(0).toUpperCase()
+                )}
+              </div>
+              <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-4 border-white ${
+                user.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
+              }`}></div>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-xl font-bold text-gray-900">{user.name}</h4>
+              <p className="text-gray-600">@{user.handle}</p>
+              {user.bio && (
+                <p className="text-gray-700 mt-2">{user.bio}</p>
               )}
+              <div className="flex items-center space-x-4 mt-3">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  user.status === 'online' 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {user.status === 'online' ? 'Online' : 'Offline'}
+                </span>
+                <span className="text-sm text-gray-500">
+                  {user.friends?.length || 0} friends
+                </span>
+              </div>
             </div>
-          )}
-
-          {success && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-3 bg-green-100 text-green-700 rounded-lg text-sm"
-            >
-              {success}
-            </motion.div>
-          )}
-
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm"
-            >
-              {error}
-            </motion.div>
-          )}
+          </div>
         </motion.div>
       </div>
     </div>

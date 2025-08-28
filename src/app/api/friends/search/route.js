@@ -60,7 +60,7 @@ export async function GET(request) {
 
     // Find users
     const users = await User.find(searchCriteria)
-      .select('name handle image avatar status lastSeen')
+      .select('name handle image status lastSeen')
       .limit(10)
       .sort({ name: 1 });
 
@@ -89,7 +89,7 @@ export async function GET(request) {
         name: user.name,
         handle: user.handle,
         image: user.image,
-        avatar: user.avatar,
+
         status: user.status,
         lastSeen: user.lastSeen,
         isFriend,

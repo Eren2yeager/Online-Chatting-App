@@ -37,10 +37,10 @@ export async function GET(request, { params }) {
 
     // Find the chat and populate participants
     const chat = await Chat.findById(chatId)
-      .populate('participants', 'name email image avatar handle status lastSeen')
-      .populate('admins', 'name email image avatar handle')
-      .populate('createdBy', 'name email image avatar handle')
-      .populate('lastMessage.senderId', 'name image avatar');
+      .populate('participants', 'name email image handle status lastSeen')
+      .populate('admins', 'name email image handle')
+      .populate('createdBy', 'name email image handle')
+      .populate('lastMessage.senderId', 'name image');
 
     if (!chat) {
       return Response.json(
@@ -87,18 +87,18 @@ export async function GET(request, { params }) {
 
 /**
  * PATCH /api/chats/[chatId]
- * Update chat settings (name, avatar, etc.)
+ * Update chat settings (name, image, etc.)
  */
 export async function PATCH(request, { params }) {
   try {
     // Rate limiting
-    const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
-    if (!rateLimitResult.success) {
-      return Response.json(
-        { success: false, error: 'Rate limit exceeded' },
-        { status: 429 }
-      );
-    }
+    // const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
+    // if (!rateLimitResult.success) {
+    //   return Response.json(
+    //     { success: false, error: 'Rate limit exceeded' },
+    //     { status: 429 }
+    //   );
+    // }
 
     // Authentication check
     const session = await getServerSession(authOptions);
@@ -110,23 +110,23 @@ export async function PATCH(request, { params }) {
     }
 
     // Validate request body
-    const validation = await validateRequest(request, chatUpdateSchema);
-    if (!validation.success) {
-      return Response.json(
-        { success: false, error: validation.error },
-        { status: 400 }
-      );
-    }
+    // const validation = await validateRequest(request, chatUpdateSchema);
+    // if (!validation.success) {
+    //   return Response.json(
+    //     { success: false, error: validation.error },
+    //     { status: 400 }
+    //   );
+    // }
 
     const { chatId } = params;
-    const { name, avatar } = validation.data;
+    const { name, image } = await request.json();
 
     // Connect to database
     await connectDB();
 
     // Find the chat
     const chat = await Chat.findById(chatId)
-      .populate('admins', 'name email image avatar handle');
+      .populate('admins', 'name email image handle');
 
     if (!chat) {
       return Response.json(
@@ -161,17 +161,17 @@ export async function PATCH(request, { params }) {
     // Update chat
     const updateData = {};
     if (name !== undefined) updateData.name = name;
-    if (avatar !== undefined) updateData.avatar = avatar;
+    if (image !== undefined) updateData.avatar = image;
 
     const updatedChat = await Chat.findByIdAndUpdate(
       chatId,
       updateData,
       { new: true }
     )
-      .populate('participants', 'name email image avatar handle status lastSeen')
-      .populate('admins', 'name email image avatar handle')
-      .populate('createdBy', 'name email image avatar handle')
-      .populate('lastMessage.senderId', 'name image avatar');
+      .populate('participants', 'name email image handle status lastSeen')
+      .populate('admins', 'name email image handle')
+      .populate('createdBy', 'name email image handle')
+      .populate('lastMessage.senderId', 'name image');
 
     return Response.json({
       success: true,
@@ -211,15 +211,15 @@ export async function DELETE(request, { params }) {
       );
     }
 
-    const { chatId } = params;
+    const { chatId } = await params;
 
     // Connect to database
     await connectDB();
 
     // Find the chat
     const chat = await Chat.findById(chatId)
-      .populate('participants', 'name email image avatar handle')
-      .populate('admins', 'name email image avatar handle');
+      .populate('participants', 'name email image handle')
+      .populate('admins', 'name email image handle');
 
     if (!chat) {
       return Response.json(

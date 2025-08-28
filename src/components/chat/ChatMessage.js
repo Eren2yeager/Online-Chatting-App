@@ -7,16 +7,16 @@ import {
   HeartIcon,
   TrashIcon,
   PencilIcon,
-  ReplyIcon
+  ReplyIcon,
+  DocumentIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
-
-/**
- * Individual chat message component
- */
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import dateFormatter from '@/functions/dateFormattor';
+import { useRouter } from 'next/navigation';
 export default function ChatMessage({ message, isOwn, onContextMenu }) {
   const [showReactions, setShowReactions] = useState(false);
-
+  const router = useRouter()
   const handleContextMenu = (e) => {
     e.preventDefault();
     onContextMenu(e, message);
@@ -28,6 +28,25 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
   };
 
   const getMessageContent = () => {
+    // System messages: show a compact neutral banner
+    if (message.type === 'system') {
+      let description = message.text;
+      if (!description && message.system) {
+        const evt = message.system.event;
+        const names = (message.system.targets || []).map(t => t.name || t.handle || 'User').join(', ');
+        if (evt === 'member_added') description = `${names} joined the group`;
+        if (evt === 'member_removed') description = `${names} left the group`;
+        if (evt === 'name_changed') description = `Group name changed to "${message.system.next?.name || ''}"`;
+        if (evt === 'image_changed') description = `Group image updated`;
+        if (evt === 'admin_promoted') description = `${names} is now an admin`;
+        if (evt === 'admin_demoted') description = `${names} is no longer an admin`;
+      }
+      return (
+        <div className="w-full text-center text-xs text-gray-600 bg-gray-100 border border-gray-200 rounded-md px-2 py-1">
+          {description || 'Update'}
+        </div>
+      );
+    }
     if (message.isDeleted) {
       return (
         <div className="text-gray-400 italic">
@@ -48,37 +67,84 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
 
         {/* Text content */}
         {message.text && (
-          <div className="text-gray-900 whitespace-pre-wrap break-words">
-            {message.text}
+          <div className=" whitespace-pre-wrap break-words">
+            {message.text.split(/(\s+)/).map((part, idx) => {
+              // Simple URL regex
+              const urlRegex = /^(https?:\/\/[^\s]+)/;
+              if (urlRegex.test(part)) {
+                return (
+                  <a
+                    key={idx}
+                    href={part}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className=" underline break-all"
+                  >
+                    {part}
+                  </a>
+                );
+              }
+              return <span key={idx}>{part}</span>;
+            })}
           </div>
         )}
 
         {/* Media content */}
         {message.media && message.media.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {message.media.map((media, index) => (
-              <div key={index} className="max-w-xs">
+              <div
+                key={index}
+                className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto"
+              >
                 {media.mime.startsWith('image/') ? (
-                  <img
-                    src={media.url}
-                    alt="Media"
-                    className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => window.open(media.url, '_blank')}
-                  />
+                  <div className="relative group">
+                    <img
+                      src={media.url}
+                      alt={media.filename || "Image"}
+                      className="rounded-xl shadow-md max-w-full h-auto cursor-pointer transition-transform duration-200 "
+                      onClick={() => window.open(media.url, '_blank')}
+                    />
+ 
+                  </div>
                 ) : media.mime.startsWith('video/') ? (
-                  <video
-                    src={media.url}
-                    controls
-                    className="rounded-lg max-w-full h-auto"
-                    preload="metadata"
-                  />
-                ) : (
-                  <div className="flex items-center space-x-2 p-3 bg-gray-100 rounded-lg">
-                    <div className="text-blue-500">
-                      📎
+                  <div className="relative group">
+                    <video
+                      src={media.url}
+                      controls
+                      className="rounded-xl shadow-md max-w-full h-auto bg-black"
+                      preload="metadata"
+                    />
+
+                  </div>
+                ) : media.mime.startsWith('audio/') ? (
+                  <div className="flex max-w-[300px] items-center gap-3 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl shadow-md">
+                    <div className="flex-shrink-0 text-blue-500 text-2xl">
+                      {/* <span role="img" aria-label="audio">🎵</span> */}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">
+                      <div className="text-sm font-semibold text-gray-900 truncate">
+                        {media.filename}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {(media.size / 1024 / 1024).toFixed(1)} MB
+                      </div>
+                      <audio
+                        src={media.url}
+                        controls
+                        className="w-full mt-1"
+                        preload="metadata"
+                      />
+                    </div>
+   
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl shadow-md">
+                    <div className="flex-shrink-0 text-blue-500 text-2xl">
+                      <span role="img" aria-label="attachment"><DocumentIcon className='text-black w-7'/></span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">
                         {media.filename}
                       </div>
                       <div className="text-xs text-gray-500">
@@ -89,8 +155,9 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
                       href={media.url}
                       download={media.filename}
                       className="text-blue-500 hover:text-blue-600"
+                      title="Download file"
                     >
-                      Download
+                      <ArrowDownTrayIcon className="w-5 h-5" />
                     </a>
                   </div>
                 )}
@@ -115,12 +182,16 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group`}
-      onContextMenu={handleContextMenu}
+
     >
       <div className={`max-w-xs lg:max-w-md ${isOwn ? 'order-2' : 'order-1'}`}>
         {/* Avatar */}
         {!isOwn && (
-          <div className="flex items-end space-x-2 mb-1">
+          <div className="flex items-center space-x-2 mb-1 cursor-pointer" 
+          onClick={()=>{
+            router.push(`/profile/${message.sender.handle}`)
+          }}
+          >
             <div className="h-6 w-6 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
               {message.sender.image ? (
                 <img
@@ -134,7 +205,7 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
                 </span>
               )}
             </div>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-gray-500 font-semibold">
               {message.sender.name}
             </span>
           </div>
@@ -142,25 +213,26 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
 
         {/* Message bubble */}
         <div
-          className={`relative rounded-lg px-3 py-2 ${
+          className={`relative rounded-lg px-3 py-2 flex flex-col ${
             isOwn
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-100 text-gray-900'
+              ? 'bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg text-white'
+              : 'bg-gradient-to-br from-gray-200 to-zinc-300 text-gray-900'
           }`}
+          onContextMenu={handleContextMenu}
         >
           {getMessageContent()}
 
           {/* Timestamp */}
-          <div className={`text-xs mt-1 ${
-            isOwn ? 'text-blue-100' : 'text-gray-500'
+          <div className={`text-xs mt-1   ${
+            isOwn ? 'text-blue-100  ml-auto' : 'text-gray-500 mr-auto'
           }`}>
-            {format(new Date(message.createdAt), 'HH:mm')}
+            {dateFormatter(new Date(message.createdAt))}
           </div>
 
           {/* Read receipts */}
           {isOwn && message.readBy && message.readBy.length > 0 && (
-            <div className="text-xs text-blue-100 mt-1">
-              ✓ Read
+            <div className="text-xs text-blue-100 ml-auto mt-1 font-bold">
+              ✓✓
             </div>
           )}
         </div>
@@ -189,52 +261,9 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
           </div>
         )}
 
-        {/* Quick reaction buttons */}
-        <div className={`flex items-center space-x-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${
-          isOwn ? 'justify-end' : 'justify-start'
-        }`}>
-          <button
-            onClick={() => handleReaction('❤️')}
-            className={`p-1 rounded-full transition-colors ${
-              hasUserReacted('❤️')
-                ? 'text-red-500 bg-red-100'
-                : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
-            }`}
-          >
-            {hasUserReacted('❤️') ? (
-              <HeartSolidIcon className="h-4 w-4" />
-            ) : (
-              <HeartIcon className="h-4 w-4" />
-            )}
-          </button>
-          
-          <button
-            onClick={() => handleReaction('👍')}
-            className="p-1 rounded-full text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-          >
-            👍
-          </button>
-          
-          <button
-            onClick={() => handleReaction('😂')}
-            className="p-1 rounded-full text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 transition-colors"
-          >
-            😂
-          </button>
-        </div>
       </div>
 
-      {/* Context menu trigger for mobile */}
-      <div className={`${isOwn ? 'order-1' : 'order-2'} flex items-start`}>
-        <button
-          onClick={(e) => onContextMenu(e, message)}
-          className="p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-        >
-          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-          </svg>
-        </button>
-      </div>
+
     </motion.div>
   );
 }

@@ -1,60 +1,71 @@
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-// import { authOptions } from '../../../lib/auth';
-// import { connectToDatabase } from '../../../lib/mongodb';
-// import User from '../../../models/User';
-// import { rateLimit } from '../../../lib/rateLimit';
+import { authOptions } from '@/lib/auth';
+import dbConnect from '@/lib/mongodb';
+import User from '@/models/User';
 
-/**
- * GET /api/users/friends
- * Get the current user's friends list
- */
-export async function GET(request) {
+export async function GET() {
   try {
-    // Rate limiting
-    // const rateLimitResult = await rateLimit(request, 100, 60 * 1000); // 100 requests per minute
-    // if (!rateLimitResult.success) {
-    //   return Response.json(
-    //     { success: false, error: 'Rate limit exceeded' },
-    //     { status: 429 }
-    //   );
-    // }
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
-    // Authentication check
-    // const session = await getServerSession(authOptions);
-    // if (!session?.user?.id) {
-    //   return Response.json(
-    //     { success: false, error: 'Unauthorized' },
-    //     { status: 401 }
-    //   );
-    // }
+    await dbConnect();
+    
+    const user = await User.findById(session.user.id)
+      .populate('friends', 'name handle image status lastSeen bio')
+      .select('friends');
 
-    // Connect to database
-    // await connectToDatabase();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
 
-    // Get current user with friends populated
-    // const currentUser = await User.findById(session.user.id)
-    //   .populate('friends', 'name email image avatar handle status lastSeen')
-    //   .select('friends');
-
-    // if (!currentUser) {
-    //   return Response.json(
-    //     { success: false, error: 'User not found' },
-    //     { status: 404 }
-    //   );
-    // }
-
-    // Return friends list
-    return Response.json({
-      success: true,
-      data: [],
-      count: 0
-    });
-
+    return NextResponse.json({ success: true, data: user.friends || [] });
   } catch (error) {
-    console.error('Error fetching friends:', error);
-    return Response.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Friends GET error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function POST(request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { friendId } = body;
+
+    if (!friendId) {
+      return NextResponse.json({ success: false, error: 'Friend ID is required' }, { status: 400 });
+    }
+
+    await dbConnect();
+    
+    const user = await User.findById(session.user.id);
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+
+    // Check if already friends
+    if (user.friends.includes(friendId)) {
+      return NextResponse.json({ success: false, error: 'Already friends with this user' }, { status: 400 });
+    }
+
+    // Add to friends list
+    user.friends.push(friendId);
+    await user.save();
+
+    // Return updated friends list
+    const updatedUser = await User.findById(session.user.id)
+      .populate('friends', 'name handle image status lastSeen bio')
+      .select('friends');
+
+    return NextResponse.json({ success: true, data: updatedUser.friends });
+  } catch (error) {
+    console.error('Friends POST error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

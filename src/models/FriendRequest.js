@@ -30,21 +30,21 @@ const FriendRequestSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries
-FriendRequestSchema.index({ from: 1, to: 1 }, { unique: true });
+FriendRequestSchema.index({ from: 1, to: 1, status: 1 });
 FriendRequestSchema.index({ to: 1, status: 1 });
 FriendRequestSchema.index({ from: 1, status: 1 });
 
-// Prevent duplicate requests
+// Prevent duplicate pending requests only
 FriendRequestSchema.pre('save', async function(next) {
   if (this.isNew) {
-    const existingRequest = await mongoose.model('FriendRequest').findOne({
+    const existingPendingRequest = await mongoose.model('FriendRequest').findOne({
       $or: [
-        { from: this.from, to: this.to },
-        { from: this.to, to: this.from }
+        { from: this.from, to: this.to, status: 'pending' },
+        { from: this.to, to: this.from, status: 'pending' }
       ]
     });
     
-    if (existingRequest) {
+    if (existingPendingRequest) {
       throw new Error('Friend request already exists between these users');
     }
   }

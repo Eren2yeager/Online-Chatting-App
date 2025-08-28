@@ -12,7 +12,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (session) {
-      router.push('/chat');
+      router.push('/chats');
     }
   }, [session, router]);
 
@@ -29,7 +29,6 @@ export default function HomePage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="h-screen overflow-y-auto bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center"
-      // style={{ minHeight: '100dvh' }}
     >
       <div
         className="

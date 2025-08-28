@@ -16,7 +16,7 @@ const MessageSchema = new mongoose.Schema({
   // Message type
   type: {
     type: String,
-    enum: ['text', 'image', 'video', 'file'],
+    enum: ['text', 'image', 'video', 'file', 'system'],
     default: 'text',
   },
   // Text content (for text messages)
@@ -24,6 +24,13 @@ const MessageSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: 2000
+  },
+  // Structured metadata for system messages
+  system: {
+    event: { type: String, enum: ['member_added', 'member_removed', 'name_changed', 'image_changed', 'admin_promoted', 'admin_demoted'], default: undefined },
+    targets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    previous: { type: mongoose.Schema.Types.Mixed },
+    next: { type: mongoose.Schema.Types.Mixed }
   },
   // Media attachments (for image/video/file messages)
   media: [{

@@ -1,171 +1,113 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../lib/auth';
-import connectDB from '../../../../../lib/mongodb';
-import User from '../../../../../models/User';
-import FriendRequest from '../../../../../models/FriendRequest';
-import { friendRequestUpdateSchema } from '../../../../../lib/validators';
+import { authOptions } from '@/lib/auth';
+import dbConnect from '@/lib/mongodb';
+import FriendRequest from '@/models/FriendRequest';
+import User from '@/models/User';
 
-/**
- * PATCH /api/friends/requests/[requestId]
- * Update friend request status (accept/reject/cancel)
- */
-export async function PATCH(request, { params }) {
+export async function PUT(request, { params }) {
   try {
-    // Check authentication
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    await connectDB();
 
     const { requestId } = params;
-    const userId = session.user.id;
-
-    // Validate request body
     const body = await request.json();
-    let validatedData;
-    try {
-      validatedData = await friendRequestUpdateSchema.parseAsync(body);
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error.errors },
-        { status: 400 }
-      );
+    const { action } = body; // 'accept', 'reject', or 'cancel'
+
+    if (!['accept', 'reject', 'cancel'].includes(action)) {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
-    const { status } = validatedData;
+    await dbConnect();
 
-    // Find friend request
-    const friendRequest = await FriendRequest.findById(requestId)
-      .populate('from', 'name image handle')
-      .populate('to', 'name image handle');
-
+    const friendRequest = await FriendRequest.findById(requestId);
     if (!friendRequest) {
-      return NextResponse.json(
-        { error: 'Friend request not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Friend request not found' }, { status: 404 });
     }
 
-    // Check authorization - user must be the recipient or sender
-    const isRecipient = friendRequest.to._id.toString() === userId;
-    const isSender = friendRequest.from._id.toString() === userId;
-
-    if (!isRecipient && !isSender) {
-      return NextResponse.json(
-        { error: 'Not authorized to modify this friend request' },
-        { status: 403 }
-      );
+    // Check if user has permission to modify this request
+    if (action === 'cancel' && friendRequest.from.toString() !== session.user.id) {
+      return NextResponse.json({ error: 'Cannot cancel someone else\'s request' }, { status: 403 });
     }
 
-    // Validate status changes
-    if (status === 'accepted' && !isRecipient) {
-      return NextResponse.json(
-        { error: 'Only the recipient can accept a friend request' },
-        { status: 403 }
-      );
+    if (['accept', 'reject'].includes(action) && friendRequest.to.toString() !== session.user.id) {
+      return NextResponse.json({ error: 'Cannot accept/reject requests not sent to you' }, { status: 403 });
     }
 
-    if (status === 'cancelled' && !isSender) {
-      return NextResponse.json(
-        { error: 'Only the sender can cancel a friend request' },
-        { status: 403 }
-      );
-    }
+    // If accepted, add each other as friends
+    if (action === 'accept') {
+      const [fromUser, toUser] = await Promise.all([
+        User.findById(friendRequest.from),
+        User.findById(friendRequest.to)
+      ]);
 
-    // Update friend request status
-    friendRequest.status = status;
-    await friendRequest.save();
-
-    // If accepted, add users to each other's friends list
-    if (status === 'accepted') {
-      const fromUser = await User.findById(friendRequest.from._id);
-      const toUser = await User.findById(friendRequest.to._id);
-
-      if (!fromUser.friends.includes(friendRequest.to._id)) {
-        fromUser.friends.push(friendRequest.to._id);
-        await fromUser.save();
+      if (fromUser && toUser) {
+        // Add to friends array if not already there
+        if (!fromUser.friends.includes(friendRequest.to)) {
+          fromUser.friends.push(friendRequest.to);
+        }
+        if (!toUser.friends.includes(friendRequest.from)) {
+          toUser.friends.push(friendRequest.from);
+        }
+        await Promise.all([fromUser.save(), toUser.save()]);
       }
-
-      if (!toUser.friends.includes(friendRequest.from._id)) {
-        toUser.friends.push(friendRequest.from._id);
-        await toUser.save();
-      }
+      // Delete the friend request after accepting
+      await FriendRequest.findByIdAndDelete(requestId);
+      return NextResponse.json({ message: 'Friend request accepted and deleted' });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: friendRequest,
-    });
+    // If cancelled, delete the friend request
+    if (action === 'cancel') {
+      await FriendRequest.findByIdAndDelete(requestId);
+      return NextResponse.json({ message: 'Friend request cancelled and deleted' });
+    }
 
+    // If rejected, update status but do not delete
+    if (action === 'reject') {
+      friendRequest.status = 'rejected';
+      await friendRequest.save();
+      const updatedRequest = await FriendRequest.findById(requestId)
+        .populate('from', 'name handle image')
+        .populate('to', 'name handle image');
+      return NextResponse.json(updatedRequest);
+    }
+
+    // Fallback (should not reach here)
+    return NextResponse.json({ error: 'Unhandled action' }, { status: 400 });
   } catch (error) {
-    console.error('Error updating friend request:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Friend request PUT error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-/**
- * DELETE /api/friends/requests/[requestId]
- * Delete a friend request
- */
 export async function DELETE(request, { params }) {
   try {
-    // Check authentication
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    await connectDB();
 
     const { requestId } = params;
-    const userId = session.user.id;
-
-    // Find friend request
+    await dbConnect();
+    
     const friendRequest = await FriendRequest.findById(requestId);
-
     if (!friendRequest) {
-      return NextResponse.json(
-        { error: 'Friend request not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Friend request not found' }, { status: 404 });
     }
 
-    // Check authorization - user must be the recipient or sender
-    const isRecipient = friendRequest.to.toString() === userId;
-    const isSender = friendRequest.from.toString() === userId;
-
-    if (!isRecipient && !isSender) {
-      return NextResponse.json(
-        { error: 'Not authorized to delete this friend request' },
-        { status: 403 }
-      );
+    // Check if user has permission to delete this request
+    if (friendRequest.from.toString() !== session.user.id && 
+        friendRequest.to.toString() !== session.user.id) {
+      return NextResponse.json({ error: 'Cannot delete someone else\'s request' }, { status: 403 });
     }
 
-    // Delete friend request
     await FriendRequest.findByIdAndDelete(requestId);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Friend request deleted successfully',
-    });
-
+    
+    return NextResponse.json({ message: 'Friend request deleted successfully' });
   } catch (error) {
-    console.error('Error deleting friend request:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Friend request DELETE error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

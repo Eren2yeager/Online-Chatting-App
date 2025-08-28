@@ -21,7 +21,7 @@ export default function SecureLayout({ children }) {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
+        className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
       >
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -36,7 +36,7 @@ export default function SecureLayout({ children }) {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
+        className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
       >
         <div className="text-center">
           <h1 className="text-4xl font-bold text-gray-800 mb-8">Welcome to ChatApp</h1>
@@ -51,7 +51,7 @@ export default function SecureLayout({ children }) {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen bg-gray-50"
+      className="h-full bg-gray-50"
     >
       {children}
     </motion.div>
