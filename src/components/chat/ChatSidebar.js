@@ -54,7 +54,7 @@ export default function ChatSidebar({
   };
 
   const getLastMessagePreview = (chat) => {
-    if (!chat.lastMessage) return 'No messages yet';
+    if (!chat.lastMessage.senderId) return 'No messages yet';
     
     const senderId = typeof chat.lastMessage.senderId === 'object' ? chat.lastMessage.senderId._id : chat.lastMessage.senderId;
     const sender = chat.participants.find(p => p._id === senderId);
@@ -86,7 +86,6 @@ export default function ChatSidebar({
       <div className="flex flex-col h-full">
         <div className="p-4 border-b border-gray-200">
           <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded mb-4"></div>
             <div className="h-10 bg-gray-200 rounded"></div>
           </div>
         </div>
@@ -112,47 +111,7 @@ export default function ChatSidebar({
       {/* Header */}
       
       <div className="p-4 border-b border-gray-200">
-        {/* <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-semibold text-gray-900">Chats</h1>
-          <div className="relative">
-            <button
-              onClick={() => setShowActions(!showActions)}
-              className="p-2 rounded-lg hover:bg-gray-100"
-            >
-              <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
-            </button>
-            
-            {showActions && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-10"
-              >
-                <button
-                  onClick={() => {
-                    onCreateGroup();
-                    setShowActions(false);
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                >
-                  <UserGroupIcon className="h-4 w-4 mr-2" />
-                  Create Group
-                </button>
-                <button
-                  onClick={() => {
-                    onShowFriendRequests();
-                    setShowActions(false);
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                >
-                  <UserIcon className="h-4 w-4 mr-2" />
-                  Friend Requests
-                </button>
-              </motion.div>
-            )}
-          </div>
-        </div> */}
+
 
         {/* Search */}
         <div className="relative">
@@ -210,7 +169,7 @@ export default function ChatSidebar({
                       <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                         {getChatAvatar(chat) ? (
                           <img
-                            src={getChatAvatar(chat)}
+                            src={getChatAvatar(chat) || "/user.jpg"}
                             alt={getChatDisplayName(chat)}
                             className="h-full w-full object-cover"
                           />
@@ -239,9 +198,14 @@ export default function ChatSidebar({
                         }`}>
                           {getChatDisplayName(chat)}
                         </h3>
-                        {chat.lastMessage && (
+                        {chat.lastMessage.senderId && (
                           <span className="text-xs text-gray-500">
-                            {dateFormatter(new Date(chat.lastMessage.createdAt))}
+                            {
+                            
+                            
+                            
+                            dateFormatter(new Date(chat.lastMessage.createdAt))
+                            }
                           </span>
                         )}
                       </div>

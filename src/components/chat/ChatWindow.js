@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { useSession } from 'next-auth/react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
   ArrowLeftIcon,
   EllipsisVerticalIcon,
   PaperClipIcon,
@@ -11,18 +11,32 @@ import {
   PaperAirplaneIcon,
   UserGroupIcon,
   UserIcon,
-  ChatBubbleLeftRightIcon
-} from '@heroicons/react/24/outline';
-import { useSocket, useSocketEmit, useSocketListener, useTypingIndicator } from '../../lib/socket';
-import ChatMessage from './ChatMessage';
-import ChatInput from './ChatInput';
-import MessageContextMenu from './MessageContextMenu';
-import ManageGroupModal from './ManageGroupModal';
-import { useRouter } from 'next/navigation';
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/24/outline";
+import {
+  useSocket,
+  useSocketEmit,
+  useSocketListener,
+  useTypingIndicator,
+} from "../../lib/socket";
+import ChatMessage from "./ChatMessage";
+import ChatInput from "./ChatInput";
+import MessageContextMenu from "./MessageContextMenu";
+import ManageGroupModal from "./ManageGroupModal";
+import { useRouter } from "next/navigation";
+import {
+  fetchMessages as apiFetchMessages,
+  markChatRead,
+} from "../../lib/client/messages";
 /**
  * Chat window component for displaying and sending messages
  */
-export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }) {
+export default function ChatWindow({
+  chat,
+  onBack,
+  onNewMessage,
+  onChatUpdated,
+}) {
   const { data: session } = useSession();
   const { socket, isConnected } = useSocket();
   const { emit } = useSocketEmit();
@@ -32,23 +46,32 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
   const [hasMore, setHasMore] = useState(true);
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuMessage, setContextMenuMessage] = useState(null);
-  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [contextMenuPosition, setContextMenuPosition] = useState({
+    x: 0,
+    y: 0,
+  });
   const [showActions, setShowActions] = useState(false);
   const [showManageGroup, setShowManageGroup] = useState(false);
-  const isAdmin = (chat?.admins || []).some(a => a._id === session?.user?.id);
+  const [replyToMessage, setReplyToMessage] = useState(null);
+  const [editMessage, setEditMessage] = useState(null);
+  const isAdmin = (chat?.admins || []).some((a) => a._id === session?.user?.id);
   const isCreator = chat?.createdBy?._id === session?.user?.id;
 
   const typingUsers = useTypingIndicator(chat._id);
- 
 
-  const router = useRouter()
+  const router = useRouter();
   // Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
     scrollToBottom();
+    // Mark chat read whenever messages change
+    if (messages.length > 0) {
+      const lastId = messages[messages.length - 1]?._id;
+      markChatRead({ chatId: chat._id, upToMessageId: lastId }).catch(() => {});
+    }
   }, [messages]);
 
   // Fetch messages
@@ -59,46 +82,45 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
   }, [chat._id]);
 
   // Socket event listeners
-  useSocketListener('message:new', (data) => {
+  useSocketListener("message:new", (data) => {
     if (data.chatId === chat._id) {
-      setMessages(prev => [...prev, data.message]);
+      setMessages((prev) => [...prev, data.message]);
       onNewMessage?.(data.message);
     }
   });
 
-  useSocketListener('message:edit', (data) => {
+  useSocketListener("message:edit", (data) => {
     if (data.chatId === chat._id) {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg._id === data.message._id ? data.message : msg
-        )
+      setMessages((prev) =>
+        prev.map((msg) => (msg._id === data.message._id ? data.message : msg))
       );
     }
   });
 
-  useSocketListener('message:delete', (data) => {
+  useSocketListener("message:delete", (data) => {
+    console.log("Received message:delete event:", data);
     if (data.chatId === chat._id) {
       if (data.deleteForEveryone) {
-        setMessages(prev => 
-          prev.map(msg => 
-            msg._id === data.messageId 
-              ? { ...msg, isDeleted: true, text: '', media: [] }
+        console.log("Deleting message for everyone:", data.messageId);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg._id === data.messageId
+              ? { ...msg, isDeleted: true, text: "", media: [] }
               : msg
           )
         );
       } else {
-        setMessages(prev => 
-          prev.filter(msg => msg._id !== data.messageId)
-        );
+        console.log("Deleting message for user:", data.messageId);
+        setMessages((prev) => prev.filter((msg) => msg._id !== data.messageId));
       }
     }
   });
 
-  useSocketListener('reaction:update', (data) => {
+  useSocketListener("reaction:update", (data) => {
     if (data.chatId === chat._id) {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg._id === data.messageId 
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === data.messageId
             ? { ...msg, reactions: data.reactions }
             : msg
         )
@@ -109,66 +131,99 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
   const fetchMessages = async (beforeId = null) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
+      const data = await apiFetchMessages({
         chatId: chat._id,
         limit: 50,
+        before: beforeId || undefined,
       });
-      
       if (beforeId) {
-        params.append('before', beforeId);
+        setMessages((prev) => [...data.data, ...prev]);
+      } else {
+        setMessages(data.data);
       }
-
-      const response = await fetch(`/api/messages?${params}`);
-      const data = await response.json();
-
-      if (data.success) {
-        if (beforeId) {
-          setMessages(prev => [...data.data, ...prev]);
-        } else {
-          setMessages(data.data);
-        }
-        setHasMore(data.pagination.hasMore);
-      }
+      setHasMore(data.pagination.hasMore);
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error("Error fetching messages:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendMessage = async (text, media = []) => {
+  const handleSendMessage = async (text, media = [], replyToId = null) => {
     if (!text.trim() && media.length === 0) return;
 
     try {
-      const messageData = {
-        chatId: chat._id,
-        text: text.trim(),
-        media,
-      };
-
-       // Emit via socket for real-time delivery and persistence on server
-      emit('message:new', messageData);
+      if (editMessage) {
+        // Handle edit mode
+        emit("message:edit", {
+          messageId: editMessage._id,
+          text: text.trim(),
+          media,
+        });
+        setEditMessage(null);
+      } else {
+        // Handle new message
+        emit("message:new", {
+          chatId: chat._id,
+          text: text.trim(),
+          media,
+          replyTo: replyToId || undefined,
+        });
+        if (replyToMessage) setReplyToMessage(null);
+      }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
     }
   };
 
   const handleMessageAction = (action, message) => {
+    console.log(
+      "Handling message action:",
+      action,
+      message._id,
+      "Socket connected:",
+      isConnected
+    );
+
+    if (!isConnected) {
+      console.error("Socket not connected, cannot perform action:", action);
+      return;
+    }
+
     switch (action) {
-      case 'edit':
-        // Handle message editing
+      case "edit":
+        {
+          setEditMessage(message);
+          setTimeout(() => {
+            const input = document.querySelector(
+              'input[placeholder="Type a message..."]'
+            );
+            if (input) input.focus();
+          }, 0);
+        }
         break;
-      case 'delete':
-        emit('message:delete', {
+      case "delete":
+        console.log("Emitting delete for message:", message._id);
+        emit("message:delete", {
           messageId: message._id,
           deleteForEveryone: false,
         });
         break;
-      case 'deleteForEveryone':
-        emit('message:delete', {
+      case "deleteForEveryone":
+        console.log("Emitting deleteForEveryone for message:", message._id);
+        emit("message:delete", {
           messageId: message._id,
           deleteForEveryone: true,
         });
+        break;
+      case "reply":
+        setReplyToMessage(message);
+        setTimeout(() => {
+          const input = document.querySelector(
+            'input[placeholder="Type a message..."]'
+          );
+          if (input) input.focus();
+        }, 0);
         break;
 
       default:
@@ -189,19 +244,19 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
       return;
     }
     const otherParticipant = chat.participants.find(
-      p => p._id !== session?.user?.id
+      (p) => p._id !== session?.user?.id
     );
     return otherParticipant?.handle;
   };
 
   const getChatDisplayName = () => {
     if (chat.isGroup) {
-      return chat.name || 'Group Chat';
+      return chat.name || "Group Chat";
     } else {
       const otherParticipant = chat.participants.find(
-        p => p._id !== session?.user?.id
+        (p) => p._id !== session?.user?.id
       );
-      return otherParticipant?.name || 'Unknown User';
+      return otherParticipant?.name || "Unknown User";
     }
   };
 
@@ -210,7 +265,7 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
       return chat.avatar || null;
     } else {
       const otherParticipant = chat.participants.find(
-        p => p._id !== session?.user?.id
+        (p) => p._id !== session?.user?.id
       );
       return otherParticipant?.image || otherParticipant?.avatar || null;
     }
@@ -227,21 +282,21 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
           >
             <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
           </button>
-          
-          <div className="flex items-center space-x-3 cursor-pointer"
+
+          <div
+            className="flex items-center space-x-3 cursor-pointer"
             onClick={() => {
               if (!chat.isGroup) {
                 router.push(`/profile/${getOtherParticipantHandle()}`);
               }
             }}
           >
-            <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+            <div className="relative h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center ">
               {getChatAvatar() ? (
                 <img
                   src={getChatAvatar()}
                   alt={getChatDisplayName()}
-                  className="h-full w-full object-cover"
-                
+                  className="h-full w-full object-cover rounded-full"
                 />
               ) : (
                 <div className="h-6 w-6 text-gray-400">
@@ -250,6 +305,11 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
                   ) : (
                     <UserIcon className="h-6 w-6 text-gray-400" />
                   )}
+                </div>
+              )}
+              {chat.isGroup && (
+                <div className="absolute bottom-0 right-0 h-5 w-5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                  <UserGroupIcon className="h-4 w-4 text-white" />
                 </div>
               )}
             </div>
@@ -262,12 +322,14 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
         </div>
 
         <div className="relative">
-          {chat.isGroup && isAdmin &&
-          
-          <button className="p-2 rounded-lg hover:bg-gray-100" onClick={() => setShowActions(v => !v)}>
-            <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
-          </button>
-          }
+          {chat.isGroup && isAdmin && (
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100"
+              onClick={() => setShowActions((v) => !v)}
+            >
+              <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
+            </button>
+          )}
           <AnimatePresence>
             {showActions && (
               <motion.div
@@ -282,7 +344,10 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
               >
                 {chat.isGroup && isAdmin && (
                   <button
-                    onClick={() => { setShowActions(false); setShowManageGroup(true); }}
+                    onClick={() => {
+                      setShowActions(false);
+                      setShowManageGroup(true);
+                    }}
                     className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
                   >
                     ⚙️ Manage Group
@@ -310,36 +375,49 @@ export default function ChatWindow({ chat, onBack, onNewMessage, onChatUpdated }
                 Load more messages
               </button>
             )}
-            
+
             <AnimatePresence>
-              {messages.map((message) => (
-                <motion.div
-                  key={message._id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <ChatMessage
-                    message={message}
-                    isOwn={message.sender._id === session?.user?.id}
-                    onContextMenu={(e) => handleMessageContextMenu(e, message)}
-                  />
-                </motion.div>
-              ))}
+              {messages
+                .filter(
+                  (message) => !message.deletedFor?.includes(session?.user?.id)
+                )
+                .map((message) => (
+                  <motion.div
+                    key={message._id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ChatMessage
+                      message={message}
+                      isOwn={message.sender._id === session?.user?.id}
+                      onContextMenu={(e) =>
+                        handleMessageContextMenu(e, message)
+                      }
+                    />
+                  </motion.div>
+                ))}
             </AnimatePresence>
-            
+
             <div ref={messagesEndRef} />
           </>
         )}
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-200 rounded-t-lg p-2 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)]" onContextMenu={() => setShowContextMenu(false)}>
+      <div
+        className="border-t border-gray-200 rounded-t-lg p-2 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)]"
+        onContextMenu={() => setShowContextMenu(false)}
+      >
         <ChatInput
           onSendMessage={handleSendMessage}
           disabled={!isConnected}
           chatId={chat._id}
+          replyToMessage={replyToMessage}
+          onCancelReply={() => setReplyToMessage(null)}
+          editMessage={editMessage}
+          onCancelEdit={() => setEditMessage(null)}
         />
       </div>
 

@@ -72,6 +72,15 @@ export const messageCreateSchema = z.object({
 
 export const messageUpdateSchema = z.object({
   text: z.string().min(1).max(2000),
+  media: z.array(z.object({
+    url: z.string().url(),
+    publicId: z.string(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    mime: z.string(),
+    size: z.number(),
+    filename: z.string(),
+  })).optional(),
 });
 
 export const messageDeleteSchema = z.object({

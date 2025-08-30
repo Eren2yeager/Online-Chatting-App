@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { nanoid } from "nanoid";
+import { createPortal } from "react-dom"; // <-- Import createPortal at the top
 
 /* ------------------------------
   Context & Hook
@@ -37,7 +38,7 @@ function ToastPortal({ children }) {
   if (!mounted || !portalRef.current) return null;
 
   // Use createPortal only on the client after mount
-  return require("react-dom").createPortal(children, portalRef.current);
+  return createPortal(children, portalRef.current);
 }
 
 /* ------------------------------

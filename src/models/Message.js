@@ -88,6 +88,11 @@ const MessageSchema = new mongoose.Schema({
   isDeleted: {
     type: Boolean,
     default: false
+  },
+  // Track if message was edited
+  editedAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true,

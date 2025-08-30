@@ -1,22 +1,22 @@
-'use client';
+"use client";
 
-import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { motion } from 'framer-motion';
-import SignInButton from '../auth/SignInButton';
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { motion } from "framer-motion";
+import SignInButton from "../auth/SignInButton";
 
 export default function SecureLayout({ children }) {
   const { data: session, status } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/signin');
+    if (status === "unauthenticated") {
+      router.push("/signin");
     }
   }, [status, router]);
 
-  if (status === 'loading') {
+  if (status === "loading") {
     return (
       <motion.div
         initial={{ opacity: 0 }}
@@ -38,10 +38,23 @@ export default function SecureLayout({ children }) {
         animate={{ opacity: 1 }}
         className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
       >
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-800 mb-8">Welcome to ChatApp</h1>
-          <p className="text-gray-600 text-lg mb-8">Please sign in to continue</p>
-          <SignInButton />
+        <div className="text-center flex flex-col justify-center">
+          <h1 className="text-4xl font-bold text-gray-800 mb-8">
+            Welcome to ChatApp
+          </h1>
+          <p className="text-gray-600 text-lg mb-8">
+            Please get session to continue
+          </p>
+          <motion.button
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={()=>{router.push("/signin")}}
+            className="bg-blue-600 w-fit hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors self-center gap-2"
+          >
+            Get Session
+          </motion.button>
         </div>
       </motion.div>
     );

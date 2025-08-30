@@ -108,6 +108,7 @@ export function useSocketEmit() {
     }
 
     try {
+      console.log('Emitting socket event:', event, data);
       socket.emit(event, data);
       return true;
     } catch (error) {

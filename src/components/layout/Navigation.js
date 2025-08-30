@@ -46,7 +46,6 @@ export default function Navigation() {
   const navigationItems = [
     { name: 'Chats', href: '/chats', icon: ChatBubbleLeftRightIcon },
     { name: 'Friends', href: '/friends', icon: UserGroupIcon },
-    { name: 'Invite', href: '/invite', icon: QrCodeIcon },
     { name: 'Profile', href: '/profile', icon: UserIcon },
   ];
 
@@ -77,15 +76,7 @@ export default function Navigation() {
             >
               <div className="flex flex-col h-full">
                 {/* Logo and Collapse/Expand Button */}
-                <div className="w-full flex items-center px-3 py-3 rounded-lg text-left transition-colors space-x-3">
-                  <button
-                    onClick={() => setIsCollapsed(false)}
-                    className="flex items-center justify-center w-8 h-8 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors"
-                    title="Close"
-                  >
-                    <span className="text-lg font-bold text-gray-500">×</span>
-                  </button>
-                </div>
+
 
                 {/* Navigation Links */}
                 <div className="space-y-2 flex-1 px-2">

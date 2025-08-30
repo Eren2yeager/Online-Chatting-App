@@ -9,7 +9,7 @@ import {
   ArrowRightIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
-
+import { useToast } from '@/components/layout/ToastContext';
 /**
  * Main sign-in page component
  */
@@ -35,7 +35,7 @@ function SignInPageContent() {
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-
+  const toast = useToast()
   const callbackUrl = searchParams.get('callbackUrl') || '/chats';
 
   useEffect(() => {
@@ -58,10 +58,13 @@ function SignInPageContent() {
 
       if (result?.error) {
         setError('Failed to sign in. Please try again.');
+        toast({text: "Failed to sign in. Please try again."})
       }
     } catch (error) {
       console.error('Sign in error:', error);
       setError('An unexpected error occurred. Please try again.');
+      toast({text: "An unexpected error occurred. Please try again."})
+
     } finally {
       setIsLoading(false);
     }
@@ -177,7 +180,7 @@ function SignInPageContent() {
           </div>
         </motion.div>
 
-        <motion.div
+        {/* <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5, duration: 0.5 }}
@@ -189,7 +192,7 @@ function SignInPageContent() {
               Sign in to get started
             </span>
           </p>
-        </motion.div>
+        </motion.div> */}
       </div>
     </div>
   );
