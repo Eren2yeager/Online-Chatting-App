@@ -328,7 +328,7 @@ export default function ChatWindow({
           </div>
         </div>
 
-        <div className="relative">
+        {/* <div className="relative">
           {chat.isGroup && isAdmin && (
             <button
               className="p-2 rounded-lg hover:bg-gray-100"
@@ -363,7 +363,7 @@ export default function ChatWindow({
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </div> */}
       </div>
 
       {/* Messages */}
@@ -451,7 +451,7 @@ export default function ChatWindow({
         />
       )} */}
 
-      {chat.isGroup && isAdmin && (
+      {chat.isGroup && (
         <ManageGroupModal
           isOpen={showManageGroup}
           onClose={() => setShowManageGroup(false)}

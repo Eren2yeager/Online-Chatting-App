@@ -217,6 +217,7 @@ export default function Navigation() {
                     onClick={handleSignOut}
                     className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left text-red-600 hover:bg-red-50 transition-colors"
                   >
+                    <ArrowRightOnRectangleIcon className="w-5 h-5 text-gray-500"/>
                     <span className="font-medium">Sign Out</span>
                   </button>
                 </div>

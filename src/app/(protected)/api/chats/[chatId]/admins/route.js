@@ -13,7 +13,7 @@ export async function POST(request, { params }) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { chatId } = await params;
+    const { chatId } = params;
     const { userId } = await request.json();
     if (!userId) {
       return Response.json({ success: false, error: 'userId is required' }, { status: 400 });
