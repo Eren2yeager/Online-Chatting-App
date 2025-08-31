@@ -286,7 +286,9 @@ export default function ChatWindow({
           <div
             className="flex items-center space-x-3 cursor-pointer"
             onClick={() => {
-              if (!chat.isGroup) {
+              if (chat.isGroup) {
+                setShowManageGroup(true);
+              } else {
                 router.push(`/profile/${getOtherParticipantHandle()}`);
               }
             }}
@@ -317,6 +319,11 @@ export default function ChatWindow({
               <h2 className="text-lg font-semibold text-gray-900">
                 {getChatDisplayName()}
               </h2>
+              {chat.isGroup && (
+                <p className="text-xs text-gray-500">
+                  {chat.participants?.length || 0} members
+                </p>
+              )}
             </div>
           </div>
         </div>

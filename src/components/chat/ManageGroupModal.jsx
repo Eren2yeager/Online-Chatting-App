@@ -23,28 +23,52 @@ export default function ManageGroupModal({
   const [imageFile, setImageFile] = useState(null);
   const [promoteId, setPromoteId] = useState("");
   const [demoteId, setDemoteId] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState(new Set());
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [activeTab, setActiveTab] = useState("settings"); // settings, members, add, activity
 
   const [editForm, setEditForm] = useState({
-    name: chat.name,
-
-    image:chat?.avatar || chat?.image || "",
+    name: chat.name || "",
+    description: chat.description || "",
+    image: chat?.avatar || chat?.image || "",
+    privacy: chat.privacy || "admin_only", // admin_only, member_invite
   });
 
   const [friends, setFriends] = useState([]);
   const [search, setSearch] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showAllPromote, setShowAllPromote] = useState(false);
   const [showAllDemote, setShowAllDemote] = useState(false);
+  const [showInviteLink, setShowInviteLink] = useState(false);
+  const [inviteLink, setInviteLink] = useState("");
 
   const participants = chat?.participants || [];
   const admins = chat?.admins || [];
   const showToast = useToast?.() || (() => {});
 
+  // Group statistics
+  const groupStats = useMemo(() => ({
+    totalMembers: participants.length,
+    totalAdmins: admins.length,
+    onlineMembers: participants.filter(p => p.status === 'online').length,
+    createdDate: chat?.createdAt ? new Date(chat.createdAt).toLocaleDateString() : 'Unknown',
+  }), [participants, admins, chat?.createdAt]);
 
   useEffect(() => {
-    if (isOpen) fetchFriends();
+    if (isOpen) {
+      fetchFriends();
+      generateInviteLink();
+    }
   }, [isOpen]);
+
+  const generateInviteLink = () => {
+    if (chat?._id) {
+      const baseUrl = window.location.origin;
+      setInviteLink(`${baseUrl}/invite/${chat._id}`);
+    }
+  };
 
   const fetchFriends = async () => {
     try {
@@ -213,9 +237,14 @@ export default function ManageGroupModal({
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
             <UserGroupIcon className="h-6 w-6 text-blue-500" />
-            <h2 className="text-xl font-semibold text-gray-900">
-              Manage Group
-            </h2>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Manage Group
+              </h2>
+              <p className="text-sm text-gray-500">
+                {chat?.name || "Group Chat"}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -223,6 +252,28 @@ export default function ManageGroupModal({
           >
             <XMarkIcon className="h-5 w-5 text-gray-500" />
           </button>
+        </div>
+
+        {/* Group Statistics */}
+        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-gray-200">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{groupStats.totalMembers}</div>
+              <div className="text-xs text-gray-600">Total Members</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{groupStats.totalAdmins}</div>
+              <div className="text-xs text-gray-600">Admins</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{groupStats.onlineMembers}</div>
+              <div className="text-xs text-gray-600">Online</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-600">{groupStats.createdDate}</div>
+              <div className="text-xs text-gray-600">Created</div>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-gray-200">

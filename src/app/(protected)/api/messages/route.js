@@ -168,6 +168,7 @@ export async function GET(request) {
           select: 'name _id image'
         }
       })
+      .populate({path : "system" , populate : {path : "targets" , select :"name image _id handle"}})
       .populate('reactions.by', 'name image handle')
       .sort({ createdAt: -1 })
       .limit(limit)

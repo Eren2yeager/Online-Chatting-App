@@ -178,7 +178,9 @@ io.on("connection", async (socket) => {
       });
 
       // Populate sender info
-      await message.populate("sender", "name image handle");
+      await message.populate("sender", "name image handle")
+      .populate({path : "system" , populate : {path : "targets" , select :"name image _id handle"}});
+
 
       // Populate replyTo if present
       if (replyTo) {

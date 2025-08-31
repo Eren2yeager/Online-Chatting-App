@@ -15,9 +15,12 @@ import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import dateFormatter from "@/functions/dateFormattor";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useMediaFullView } from "../layout/mediaFullViewContext";
+
 export default function ChatMessage({ message, isOwn, onContextMenu }) {
   const { data: session } = useSession();
   const [showReactions, setShowReactions] = useState(false);
+  const { mediaToView, setMediaToView } = useMediaFullView();
   const router = useRouter();
   const handleContextMenu = (e) => {
     e.preventDefault();
@@ -29,30 +32,55 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
     // This would be handled by the parent component
   };
 
+  // WhatsApp-style system message in the middle with name
+  const WhatsAppSystemMiddle = ({ children, name }) => (
+    <div className="flex w-full justify-center my-2 select-none">
+      <div className="relative flex items-center px-4 py-1 bg-white border border-gray-300 rounded-full shadow text-xs text-gray-700 font-medium">
+        {name && (
+          <span className="font-semibold text-green-700 mr-2">{name}</span>
+        )}
+        <span>{children}</span>
+      </div>
+    </div>
+  );
+
   const getMessageContent = () => {
-    // System messages: show a compact neutral banner
+    // System messages: WhatsApp style in the middle with name
     if (message.type === "system") {
       let description = message.text;
+      let name = "";
       if (!description && message.system) {
         const evt = message.system.event;
-        const names = (message.system.targets || [])
+        const targets = message.system.targets || [];
+        name = targets.length > 0
+          ? (targets[0].name || targets[0].handle || "User")
+          : "";
+        const names = targets
           .map((t) => t.name || t.handle || "User")
           .join(", ");
-        if (evt === "member_added") description = `${names} joined the group`;
-        if (evt === "member_removed") description = `${names} left the group`;
+        if (evt === "member_added") description = `added`;
+        if (evt === "member_removed") description = `left`;
         if (evt === "name_changed")
-          description = `Group name changed to "${
+          description = `changed group name to "${
             message.system.next?.name || ""
           }"`;
-        if (evt === "image_changed") description = `Group image updated`;
-        if (evt === "admin_promoted") description = `${names} is now an admin`;
-        if (evt === "admin_demoted")
-          description = `${names} is no longer an admin`;
+        if (evt === "image_changed") description = `updated group image`;
+        if (evt === "admin_promoted") description = `is now an admin`;
+        if (evt === "admin_demoted") description = `is no longer an admin`;
+        // For multiple targets, show all names
+        if (
+          ["admin_promoted", "admin_demoted", "member_added", "member_removed"].includes(
+            evt
+          ) &&
+          targets.length > 1
+        ) {
+          name = names;
+        }
       }
       return (
-        <div className="w-full text-center text-xs text-gray-600 bg-gray-100 border border-gray-200 rounded-md px-2 py-1">
+        <WhatsAppSystemMiddle name={name}>
           {description || "Update"}
-        </div>
+        </WhatsAppSystemMiddle>
       );
     }
     if (message.isDeleted) {
@@ -66,117 +94,271 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
         {/* Reply to message */}
         {message.replyTo && (
           <div className="bg-gray-100 rounded-lg text-sm text-gray-600 border-l-4 p-2 border-green-500">
-            <div className="font-medium text-xs text-green-500">
+            <div className=" text-xs text-green-500 font-bold">
               <div className="flex items-center gap-2">
-                <span className="">
+                <span>
                   Replying to{" "}
                   {message.sender?._id === message.replyTo.sender?._id ? (
                     "Self"
+                  ) : message.replyTo.sender?._id === session?.user?.id ? (
+                    "You"
                   ) : (
                     <>
-                      {message.replyTo.sender?._id === session?.user?.id ? (
-                        "You"
-                      ) : (
-                        <>
-                          {message.replyTo.sender?.image && (
-                            <img
-                              src={message.replyTo.sender.image}
-                              alt={message.replyTo.sender.name || "User"}
-                              className="w-6 h-6 rounded-full object-cover  inline-block mr-1"
-                            />
-                          )}
-                          <span className="text-purple-600 font-bold">
-                            {message.replyTo.sender?.name || "User"}
-                          </span>
-                        </>
+                      {message.replyTo.sender?.image && (
+                        <img
+                          src={message.replyTo.sender.image}
+                          alt={message.replyTo.sender.name || "User"}
+                          className="w-6 h-6 rounded-full object-cover inline-block mr-1"
+                        />
                       )}
+                      <span className="text-purple-600 font-bold">
+                        {message.replyTo.sender?.name || "User"}
+                      </span>
                     </>
                   )}
                 </span>
               </div>
             </div>
 
+            {/* Show reply media using the full viewer if more than one, or correct type */}
             {message.replyTo.media && message.replyTo.media.length > 0 && (
               <div className="flex gap-2 mt-2">
-                {message.replyTo.media.map((media, idx) => (
-                  <div key={idx} className="max-w-[80px] max-h-[80px]">
-                    {media.mime.startsWith("image/") ? (
-                      <img
-                        src={media.url}
-                        alt={media.filename || "Image"}
-                        className="rounded-md shadow w-full h-full object-cover cursor-pointer"
-                        onClick={() => window.open(media.url, "_blank")}
-                      />
-                    ) : media.mime.startsWith("video/") ? (
-                      <video
-                        src={media.url}
-                        className="rounded-md shadow w-full h-full object-cover bg-black"
-                        preload="metadata"
-                        controls={false}
-                        onClick={() => window.open(media.url, "_blank")}
-                      />
-                    ) : media.mime.startsWith("audio/") ? (
-                      <div className="flex items-center">
-                        <audio
+                {message.replyTo.media.slice(0, 3).map((media, idx) => {
+                  // Helper for click: open full viewer at correct index
+                  const handleReplyMediaClick = (e) => {
+                    e.stopPropagation();
+                    setMediaToView({
+                      media: message.replyTo.media,
+                      initialIndex: idx,
+                    });
+                  };
+
+                  // Guess type
+                  const mime = media.mime || media.type || "";
+                  if (mime.startsWith("image/")) {
+                    return (
+                      <div key={idx} className="max-w-[80px] max-h-[80px]">
+                        <img
                           src={media.url}
-                          controls
-                          className="w-full"
-                          preload="metadata"
+                          alt={media.filename || "Image"}
+                          className="rounded-md shadow w-full h-full object-cover cursor-pointer"
+                          onClick={handleReplyMediaClick}
                         />
                       </div>
-                    ) : (
+                    );
+                  }
+                  if (mime.startsWith("video/")) {
+                    return (
+                      <div key={idx} className="max-w-[80px] max-h-[80px] relative cursor-pointer">
+                        <video
+                          src={media.url}
+                          className="rounded-md shadow w-full h-full object-cover bg-black"
+                          preload="metadata"
+                          controls={false}
+                          onClick={handleReplyMediaClick}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <span className="bg-black/60 text-white text-xs px-2 py-1 rounded">Video</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (mime.startsWith("audio/")) {
+                    return (
+                      <div key={idx} className="max-w-[80px] max-h-[80px] flex items-center">
+                        <div
+                          className="w-full cursor-pointer"
+                          onClick={handleReplyMediaClick}
+                          title="Play audio"
+                        >
+                          <audio
+                            src={media.url}
+                            controls
+                            className="w-full"
+                            preload="metadata"
+                            style={{ maxWidth: 70 }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                  // Document/other
+                  return (
+                    <div key={idx} className="max-w-[80px] max-h-[80px] flex items-center">
                       <a
                         href={media.url}
                         download={media.filename}
-                        className="flex items-center gap-1 text-blue-500 hover:underline"
+                        className="flex items-center gap-1 text-blue-500 hover:underline truncate max-w-[70px]"
                         title="Download file"
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
                       >
                         <span className="truncate max-w-[60px]">
-                          {media.filename}
+                          {media.filename || media.url?.split("/").pop() || "File"}
                         </span>
                       </a>
-                    )}
+                    </div>
+                  );
+                })}
+                {message.replyTo.media.length > 3 && (
+                  <div className="flex items-center justify-center w-[80px] h-[80px] bg-gray-200 rounded-md shadow text-gray-500 font-bold text-lg cursor-pointer"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setMediaToView({
+                        media: message.replyTo.media,
+                        initialIndex: 3,
+                      });
+                    }}
+                  >
+                    +{message.replyTo.media.length - 3}
                   </div>
-                ))}
+                )}
               </div>
             )}
+
             <div className="truncate">
-              
-              
-              {(message.replyTo.isDeleted) ? "🚫 This message was deleted" : message.replyTo.text }</div>
+              {message.replyTo.isDeleted
+                ? "🚫 This message was deleted"
+                : message.replyTo.text}
+            </div>
           </div>
         )}
 
         {/* Media content */}
         {message.media && message.media.length > 0 && (
-          <div className="space-y-3">
-            {message.media.map((media, index) => (
-              <div key={index} className=" max-w-xs  mx-auto">
-                {media.mime.startsWith("image/") ? (
-                  <div className="relative group">
+          <div className={
+            message.media.length > 1
+              ? "grid grid-cols-2 gap-2 max-w-xs mx-auto"
+              : "space-y-3"
+          }>
+            {message.media.slice(0, 4).map((media, index) => {
+              // For >4 media, only show first 4, last one with overlay
+              const isLast = index === 3 && message.media.length > 4;
+              const showOverlay = isLast;
+              const overlayCount = message.media.length - 4;
+
+              // Helper for click: open full viewer at correct index
+
+              const handleMediaClick = (e) => {
+                e.stopPropagation();
+                setMediaToView({
+                  media: message.media,
+                  initialIndex: index,
+                });
+              };
+
+              // Image
+              if (media.mime.startsWith("image/")) {
+                return (
+                  <div
+                    key={index}
+                    className="relative group aspect-square overflow-hidden rounded-xl shadow-md cursor-pointer"
+                    onClick={handleMediaClick}
+                  >
                     <img
                       src={media.url}
                       alt={media.filename || "Image"}
-                      className="rounded-xl shadow-md w-full h-auto cursor-pointer transition-transform duration-200 "
-                      onClick={() => window.open(media.url, "_blank")}
+                      className="object-cover w-full h-full transition-transform duration-200 group-hover:scale-105"
                     />
+                    {showOverlay && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                        <span className="text-white text-2xl font-bold">
+                          +{overlayCount}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                ) : media.mime.startsWith("video/") ? (
-                  <div className="relative group">
+                );
+              }
+              // Video
+              if (media.mime.startsWith("video/")) {
+                return (
+                  <div
+                    key={index}
+                    className="relative group aspect-square overflow-hidden rounded-xl shadow-md bg-black cursor-pointer"
+                    onClick={handleMediaClick}
+                  >
                     <video
                       src={media.url}
-                      controls
-                      className="rounded-xl shadow-md max-w-full h-auto bg-black"
+                      className="object-cover w-full h-full"
                       preload="metadata"
+                      muted
+                      playsInline
                     />
-                  </div>
-                ) : media.mime.startsWith("audio/") ? (
-                  <div className="flex max-w-[300px] items-center gap-3 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl shadow-md">
-                    <div className="flex-shrink-0 text-blue-500 text-2xl">
-                      {/* <span role="img" aria-label="audio">🎵</span> */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <svg className="w-10 h-10 text-white opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <polygon points="9,7 9,17 16,12" fill="currentColor" />
+                      </svg>
                     </div>
+                    {showOverlay && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                        <span className="text-white text-2xl font-bold">
+                          +{overlayCount}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              // Audio
+              if (media.mime.startsWith("audio/")) {
+                return (
+                  <div
+                    key={index}
+                    className="relative group aspect-square flex flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl shadow-md cursor-pointer"
+                    onClick={handleMediaClick}
+                  >
+                    <span className="text-blue-500 text-3xl mb-2">
+                      <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-2v13" />
+                        <circle cx="6" cy="18" r="3" fill="currentColor" />
+                      </svg>
+                    </span>
+                    <div className="text-xs text-gray-900 font-semibold truncate px-2 w-full text-center">
+                      {media.filename}
+                    </div>
+                    {showOverlay && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                        <span className="text-white text-2xl font-bold">
+                          +{overlayCount}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              // Document/Other
+              return (
+                <div
+                  key={index}
+                  className="relative group aspect-square flex flex-col items-center justify-center bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl shadow-md cursor-pointer"
+                  onClick={handleMediaClick}
+                >
+                  <span className="text-blue-500 text-3xl mb-2">
+                    <DocumentIcon className="w-8 h-8 text-black" />
+                  </span>
+                  <div className="text-xs text-gray-900 font-semibold truncate px-2 w-full text-center">
+                    {media.filename}
+                  </div>
+                  {showOverlay && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <span className="text-white text-2xl font-bold">
+                        +{overlayCount}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* If only one media, show in old style (full width) */}
+            {message.media.length === 1 && (() => {
+              const media = message.media[0];
+              if (media.mime.startsWith("audio/")) {
+                return (
+                  <div className="flex max-w-[300px] items-center gap-3 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl shadow-md mt-2">
+                    <div className="flex-shrink-0 text-blue-500 text-2xl"></div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-gray-900 truncate">
                         {media.filename}
@@ -192,8 +374,15 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
                       />
                     </div>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl shadow-md">
+                );
+              }
+              if (
+                !media.mime.startsWith("image/") &&
+                !media.mime.startsWith("video/") &&
+                !media.mime.startsWith("audio/")
+              ) {
+                return (
+                  <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl shadow-md mt-2">
                     <div className="flex-shrink-0 text-blue-500 text-2xl">
                       <span role="img" aria-label="attachment">
                         <DocumentIcon className="text-black w-7" />
@@ -216,9 +405,23 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
                       <ArrowDownTrayIcon className="w-5 h-5" />
                     </a>
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              }
+              return null;
+            })()}
+            {/* Overlay for clicking anywhere to open full viewer */}
+            {message.media.length > 1 && (
+              <button
+                className="absolute inset-0 w-full h-full z-10 cursor-pointer bg-transparent"
+                style={{ pointerEvents: "auto" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMediaToView({ media: message.media });
+                }}
+                tabIndex={-1}
+                aria-label="View all media"
+              />
+            )}
           </div>
         )}
 
@@ -259,6 +462,15 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
       (r) => r.emoji === emoji && (r.by?._id === me || r.by === me)
     );
   };
+
+  if (message.type === "system") {
+    // Center system message in the middle of the window
+    return (
+      <div className="flex justify-center w-full my-2">
+        {getMessageContent()}
+      </div>
+    );
+  }
 
   return (
     <motion.div

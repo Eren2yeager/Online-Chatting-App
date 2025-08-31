@@ -236,7 +236,7 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
           <div className="text-sm text-gray-700 truncate">
             Replying to {replyToMessage.sender?.name || 'User'}: {replyToMessage.text || (replyToMessage.media?.length ? 'Media' : '')}
           </div>
-          <button onClick={onCancelReply} className="text-gray-500 hover:text-gray-700">
+          <button onClick={onCancelReply} disabled={disabled || uploading} className="text-gray-500 hover:text-gray-700">
             <XMarkIcon className="h-4 w-4" />
           </button>
         </div>
@@ -247,7 +247,7 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
           <div className="text-sm text-gray-700 truncate">
             Editing: {editMessage.text || (editMessage.media?.length ? 'Media' : '')}
           </div>
-          <button onClick={onCancelEdit} className="text-gray-500 hover:text-gray-700">
+          <button onClick={onCancelEdit} disabled={disabled || uploading} className="text-gray-500 hover:text-gray-700">
             <XMarkIcon className="h-4 w-4" />
           </button>
         </div>
@@ -332,14 +332,14 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
             );
           })}
         </div>
-                <div className="ml-auto bg-gray-300 h-fit w-fit m-1  rounded-lg self-end">
+                <div className="ml-auto bg-gray-300 h-fit w-fit m-1  rounded-full self-end">
           <button
             onClick={() => setSelectedFiles([])}
-            className="  px-2 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors "
+            className="  px-2.5 py-0.5 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors "
             disabled={disabled || uploading}
           >
             {/* <XMarkIcon className="h-5 w-5 text-white" /> */}
-            Clear
+            {window.innerWidth > 640 ? "Clear" : "x"}
           </button>
         </div>
           
