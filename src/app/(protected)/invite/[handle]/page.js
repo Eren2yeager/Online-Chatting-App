@@ -240,7 +240,7 @@ export default function InviteHandlePage() {
               Request Sent!
             </h3>
             <p className="text-green-700 mb-6">
-              Your friend request has been sent to {targetUser.name}. They'll be
+              Your friend request has been sent to {targetUser.name}. They&apos;ll be
               notified and can accept or reject your request.
             </p>
             <div className="space-y-3">
@@ -332,7 +332,7 @@ export default function InviteHandlePage() {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                  placeholder={`Hi ${targetUser.name}! I'd like to add you as a friend...`}
+                  placeholder={`Hi ${targetUser.name}! I&apos;d like to add you as a friend...`}
                   rows="4"
                   maxLength="200"
                 />

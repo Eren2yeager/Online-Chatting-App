@@ -25,7 +25,7 @@ const MediaGalleryDialog = ({ mediaArray, onSelect, onClose }) => (
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
-    onClick={onClose}
+    // onClick={onClose}
   >
     <motion.div
       className="bg-white/10 rounded-xl p-6 max-w-2xl w-full m-4 max-h-screen overflow-y-auto shadow-2xl flex flex-col gap-4 relative"
@@ -92,7 +92,7 @@ const MediaFullDialog = ({ media, onClose, onPrev, onNext, hasPrev, hasNext }) =
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      onClick={onClose}
+      // onClick={onClose} 
     >
       <motion.div
         className="relative flex flex-col items-center bg-zinc-900/80 rounded-xl p-4 shadow-2xl max-w-[90vw] max-h-[90vh]"
@@ -242,7 +242,7 @@ const MediaFullViewer = () => {
         <MediaGalleryDialog
           key="gallery"
           mediaArray={mediaArray}
-          onSelect={handleSelect}
+          onSelect={handleSelect}z
           onClose={handleClose}
         />
       )}

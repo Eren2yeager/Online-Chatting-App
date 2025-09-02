@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   XMarkIcon,
   UserIcon,
   CheckIcon,
   XCircleIcon,
-  UserPlusIcon
+  UserPlusIcon,
 } from '@heroicons/react/24/outline';
 
 /**
@@ -24,6 +24,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
     if (isOpen && session) {
       fetchFriendRequests();
     }
+    // eslint-disable-next-line
   }, [isOpen, session, activeTab]);
 
   const fetchFriendRequests = async () => {
@@ -31,7 +32,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
       setLoading(true);
       const response = await fetch(`/api/friends/requests?type=${activeTab}`);
       const data = await response.json();
-      
+
       if (data.success) {
         setFriendRequests(data.data);
       }
@@ -55,9 +56,8 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
       const data = await response.json();
 
       if (data.success) {
-        // Remove the request from the list
-        setFriendRequests(prev => prev.filter(req => req._id !== requestId));
-        
+        setFriendRequests((prev) => prev.filter((req) => req._id !== requestId));
+
         if (action === 'accepted' && onRequestAccepted) {
           onRequestAccepted();
         }
@@ -74,7 +74,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
       });
 
       if (response.ok) {
-        setFriendRequests(prev => prev.filter(req => req._id !== requestId));
+        setFriendRequests((prev) => prev.filter((req) => req._id !== requestId));
       }
     } catch (error) {
       console.error('Error canceling friend request:', error);
@@ -122,6 +122,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
               <button
                 onClick={onClose}
                 className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Close"
               >
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
               </button>
@@ -136,6 +137,8 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
                     ? 'text-blue-600 border-b-2 border-blue-600'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
+                aria-current={activeTab === 'received' ? 'page' : undefined}
+                type="button"
               >
                 Received
               </button>
@@ -146,6 +149,8 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
                     ? 'text-blue-600 border-b-2 border-blue-600'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
+                aria-current={activeTab === 'sent' ? 'page' : undefined}
+                type="button"
               >
                 Sent
               </button>
@@ -160,19 +165,20 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
               ) : friendRequests.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <UserIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>No {activeTab} friend requests</p>
+                  <p>
+                    No {activeTab} friend requests
+                  </p>
                   <p className="text-sm">
-                    {activeTab === 'received' 
+                    {activeTab === 'received'
                       ? 'When someone sends you a friend request, it will appear here'
-                      : 'Friend requests you send will appear here'
-                    }
+                      : 'Friend requests you send will appear here'}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {friendRequests.map((request) => {
                     const user = getRequestUser(request);
-                    
+
                     return (
                       <div
                         key={request._id}
@@ -203,7 +209,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
                           </div>
                           {request.message && (
                             <div className="text-sm text-gray-600 mt-1">
-                              "{request.message}"
+                              &quot;{request.message}&quot;
                             </div>
                           )}
                           <div className="text-xs text-gray-400 mt-1">
@@ -218,6 +224,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
                               onClick={() => handleRequestAction(request._id, 'accepted')}
                               className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
                               title="Accept"
+                              type="button"
                             >
                               <CheckIcon className="h-4 w-4" />
                             </button>
@@ -225,6 +232,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
                               onClick={() => handleRequestAction(request._id, 'rejected')}
                               className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
                               title="Reject"
+                              type="button"
                             >
                               <XCircleIcon className="h-4 w-4" />
                             </button>
@@ -233,6 +241,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
                           <button
                             onClick={() => handleCancelRequest(request._id)}
                             className="px-3 py-1 text-sm text-gray-500 hover:text-red-600 transition-colors"
+                            type="button"
                           >
                             Cancel
                           </button>

@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   XMarkIcon,
   UserGroupIcon,
   MagnifyingGlassIcon,
-  CheckIcon
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 /**
@@ -26,18 +26,24 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
     if (isOpen && session) {
       fetchFriends();
     }
+    // eslint-disable-next-line
   }, [isOpen, session]);
 
   const fetchFriends = async () => {
     try {
       const response = await fetch('/api/users/friends');
       const data = await response.json();
-      
-      if (data.success) {
+      // Accept both array and {data:[]} for compatibility
+      if (Array.isArray(data)) {
+        setFriends(data);
+      } else if (Array.isArray(data?.data)) {
         setFriends(data.data);
+      } else {
+        setFriends([]);
       }
     } catch (error) {
       console.error('Error fetching friends:', error);
+      setFriends([]);
     }
   };
 
@@ -64,7 +70,7 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
         body: JSON.stringify({
           isGroup: true,
           name: groupName.trim(),
-          participants: selectedFriends.map(friend => friend._id),
+          participants: selectedFriends.map((friend) => friend._id),
         }),
       });
 
@@ -93,20 +99,22 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
   };
 
   const toggleFriendSelection = (friend) => {
-    setSelectedFriends(prev => {
-      const isSelected = prev.some(f => f._id === friend._id);
+    setSelectedFriends((prev) => {
+      const isSelected = prev.some((f) => f._id === friend._id);
       if (isSelected) {
-        return prev.filter(f => f._id !== friend._id);
+        return prev.filter((f) => f._id !== friend._id);
       } else {
         return [...prev, friend];
       }
     });
   };
 
-  const filteredFriends = friends.filter(friend =>
-    friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    friend.handle.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredFriends = friends.filter((friend) => {
+    const name = (friend.name || '').toLowerCase();
+    const handle = (friend.handle || '').toLowerCase();
+    const query = searchQuery.toLowerCase();
+    return name.includes(query) || handle.includes(query);
+  });
 
   return (
     <AnimatePresence>
@@ -115,7 +123,7 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-transparent backdrop-blur-xs bg-opacity-50 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           onClick={handleClose}
         >
           <motion.div
@@ -136,6 +144,7 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
               <button
                 onClick={handleClose}
                 className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Close"
               >
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
               </button>
@@ -152,7 +161,7 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
                   type="text"
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
-                  placeholder="Enter group name..."
+                  placeholder="Enter group name&hellip;"
                   className="w-full px-3 py-2 border text-black border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   maxLength={50}
                 />
@@ -169,7 +178,7 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search friends..."
+                    placeholder="Search friends&hellip;"
                     className="w-full pl-10 pr-4 py-2 border text-black border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
@@ -186,11 +195,12 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
                 ) : (
                   <div className="space-y-2">
                     {filteredFriends.map((friend) => {
-                      const isSelected = selectedFriends.some(f => f._id === friend._id);
-                      
+                      const isSelected = selectedFriends.some((f) => f._id === friend._id);
+
                       return (
                         <button
                           key={friend._id}
+                          type="button"
                           onClick={() => toggleFriendSelection(friend)}
                           className={`w-full flex items-center space-x-3 p-3 rounded-lg border transition-colors ${
                             isSelected
@@ -219,11 +229,13 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
                               @{friend.handle}
                             </div>
                           </div>
-                          <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                            isSelected
-                              ? 'border-blue-500 bg-blue-500'
-                              : 'border-gray-300'
-                          }`}>
+                          <div
+                            className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                              isSelected
+                                ? 'border-blue-500 bg-blue-500'
+                                : 'border-gray-300'
+                            }`}
+                          >
                             {isSelected && (
                               <CheckIcon className="h-3 w-3 text-white" />
                             )}
@@ -246,17 +258,19 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated }) {
             {/* Footer */}
             <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-200">
               <button
+                type="button"
                 onClick={handleClose}
                 className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleCreateGroup}
                 disabled={loading || !groupName.trim() || selectedFriends.length === 0}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? 'Creating...' : 'Create Group'}
+                {loading ? 'Creating…' : 'Create Group'}
               </button>
             </div>
           </motion.div>

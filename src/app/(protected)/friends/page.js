@@ -232,7 +232,7 @@ export default function FriendsPage() {
               <form onSubmit={handleAddFriend}>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Friend's Handle
+                    Friend&apos;s Handle
                   </label>
                   <input
                     type="text"
@@ -428,7 +428,7 @@ export default function FriendsPage() {
                                 <h4 className="font-medium text-gray-900">{request.from.name}</h4>
                                 <p className="text-sm text-gray-500">@{request.from.handle}</p>
                                 {request.message && (
-                                  <p className="text-sm text-gray-600 mt-1">"{request.message}"</p>
+                                  <p className="text-sm text-gray-600 mt-1">&quot;{request.message}&quot;</p>
                                 )}
                                 <p className="text-xs text-gray-400">
                                   {new Date(request.createdAt).toLocaleDateString()}
@@ -493,7 +493,7 @@ export default function FriendsPage() {
                                 <h4 className="font-medium text-gray-900">{request.to.name}</h4>
                                 <p className="text-sm text-gray-500">@{request.to.handle}</p>
                                 {request.message && (
-                                  <p className="text-sm text-gray-600 mt-1">"{request.message}"</p>
+                                  <p className="text-sm text-gray-600 mt-1">&quot;{request.message}&quot;</p>
                                 )}
                                 <p className="text-xs text-gray-400">
                                   {new Date(request.createdAt).toLocaleDateString()}
