@@ -13,7 +13,7 @@ import User from "../src/models/User.js";
 import Chat from "../src/models/Chat.js";
 import Message from "../src/models/Message.js";
 import Notification from "../src/models/Notification.js";
-
+import FriendRequest from "../src/models/FriendRequest.js";
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {
@@ -51,6 +51,9 @@ async function start() {
 // Store user socket mappings
 const userSockets = new Map();
 const userRooms = new Map();
+
+// Store typing users per chat for cleanup
+const typingUsers = new Map(); // chatId -> Map(userId -> { user, timeout })
 
 /**
  * Authenticate socket connection using JWT token
@@ -118,6 +121,57 @@ const updateUserPresence = async (userId, status = "online") => {
   }
 };
 
+/**
+ * Add user to typing list with automatic cleanup
+ */
+const addTypingUser = (chatId, userId, user) => {
+  if (!typingUsers.has(chatId)) {
+    typingUsers.set(chatId, new Map());
+  }
+  
+  const chatTypingUsers = typingUsers.get(chatId);
+  
+  // Clear existing timeout if user was already typing
+  if (chatTypingUsers.has(userId)) {
+    clearTimeout(chatTypingUsers.get(userId).timeout);
+  }
+  
+  // Set new timeout to automatically remove user after 5 seconds
+  const timeout = setTimeout(() => {
+    removeTypingUser(chatId, userId);
+  }, 5000);
+  
+  chatTypingUsers.set(userId, { user, timeout });
+};
+
+/**
+ * Remove user from typing list
+ */
+const removeTypingUser = (chatId, userId) => {
+  const chatTypingUsers = typingUsers.get(chatId);
+  if (chatTypingUsers && chatTypingUsers.has(userId)) {
+    const { timeout } = chatTypingUsers.get(userId);
+    clearTimeout(timeout);
+    chatTypingUsers.delete(userId);
+    
+    // Clean up empty chat entries
+    if (chatTypingUsers.size === 0) {
+      typingUsers.delete(chatId);
+    }
+  }
+};
+
+/**
+ * Clean up typing users for a specific user (when they disconnect)
+ */
+const cleanupUserTyping = (userId) => {
+  for (const [chatId, chatTypingUsers] of typingUsers.entries()) {
+    if (chatTypingUsers.has(userId)) {
+      removeTypingUser(chatId, userId);
+    }
+  }
+};
+
 // Socket connection handler
 io.use(async (socket, next) => {
   try {
@@ -152,32 +206,70 @@ io.on("connection", async (socket) => {
   await joinUserToChats(socket, socket.userId);
 
   // Handle typing events
+  // The issue is likely that `socket.user` is a Mongoose document, not a plain JS object,
+  // and may not include all fields (like name/image) if not populated or converted.
+  // Let's ensure we emit only the necessary fields as a plain object.
+
   socket.on("typing:start", async (data) => {
     const { chatId } = data;
-    socket.to(`chat:${chatId}`).emit("typing:start", {
-      chatId,
-      userId: socket.userId,
-      userName: socket.user.name,
-    });
+    if (!chatId) return;
+    
+    // Extract only the fields you want to send to the client
+    const user = socket.user
+      ? {
+          _id: socket.user._id?.toString?.() || socket.user.id,
+          name: socket.user.name,
+          image: socket.user.image,
+          handle: socket.user.handle,
+        }
+      : null;
+
+    if (user) {
+      // Add to server-side typing tracking
+      addTypingUser(chatId, user._id, user);
+      
+      // Emit to other users in the chat
+      socket.to(`chat:${chatId}`).emit("typing:start", {
+        chatId,
+        user,
+      });
+    }
   });
 
   socket.on("typing:stop", async (data) => {
     const { chatId } = data;
-    socket.to(`chat:${chatId}`).emit("typing:stop", {
-      chatId,
-      userId: socket.userId,
-      userName: socket.user.name,
-    });
+    if (!chatId) return;
+    
+    const user = socket.user
+      ? {
+          _id: socket.user._id?.toString?.() || socket.user.id,
+          name: socket.user.name,
+          image: socket.user.image,
+          handle: socket.user.handle,
+        }
+      : null;
+
+    if (user) {
+      // Remove from server-side typing tracking
+      removeTypingUser(chatId, user._id);
+      
+      // Emit to other users in the chat
+      socket.to(`chat:${chatId}`).emit("typing:stop", {
+        chatId,
+        user,
+      });
+    }
   });
 
   // Handle new message
   socket.on("message:new", async (data, ack) => {
+    let message = null;
     try {
       const { chatId, text, media, replyTo } = data;
       if (!chatId) return ack && ack({ success: false, error: "chatId is required" });
 
       // Create message in database
-      const message = await Message.create({
+      message = await Message.create({
         chatId,
         sender: socket.userId,
         text,
@@ -185,14 +277,14 @@ io.on("connection", async (socket) => {
         replyTo,
       });
 
-      // Populate sender info
-      await message.populate("sender", "name image handle")
-      .populate({path : "system" , populate : {path : "targets" , select :"name image _id handle"}});
-
-
-      // Populate replyTo if present
-      if (replyTo) {
-        await message.populate({
+      // Re-fetch the message with all necessary population (since .populate is not available on the instance)
+      message = await Message.findById(message._id)
+        .populate("sender", "name image handle")
+        .populate({
+          path: "system",
+          populate: { path: "targets", select: "name image _id handle" }
+        })
+        .populate({
           path: "replyTo",
           select: "text sender media isDeleted",
           populate: {
@@ -200,7 +292,6 @@ io.on("connection", async (socket) => {
             select: "name _id image",
           },
         });
-      }
 
       // Update chat's last message
       await Chat.findByIdAndUpdate(chatId, {
@@ -244,10 +335,18 @@ io.on("connection", async (socket) => {
         });
       }
 
-      return ack && ack({ success: true, message });
+      if (ack) {
+        ack({ success: true, message });
+      }
     } catch (error) {
       console.error("Error handling new message:", error);
-      return ack && ack({ success: false, error: "Failed to send message" });
+      if (ack) {
+        ack({
+          success: !!message,
+          message,
+          error: "Failed to send message",
+        });
+      }
     }
   });
 
@@ -851,6 +950,9 @@ io.on("connection", async (socket) => {
   // Handle disconnect
   socket.on("disconnect", async () => {
     console.log(`User ${socket.userId} disconnected`);
+
+    // Clean up typing indicators for this user
+    cleanupUserTyping(socket.userId);
 
     // Remove socket mapping
     userSockets.delete(socket.userId);

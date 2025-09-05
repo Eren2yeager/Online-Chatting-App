@@ -41,16 +41,26 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
     } else {
       emit("typing:stop", { chatId });
     }
-  }, [typing, emit, chatId]);
+  }, [ emit, chatId]);
 
-  // Cleanup typing timeout on unmount
+  // Cleanup typing timeout and send typing:stop on unmount
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, []);
+  }, []); // Only run on mount/unmount
+
+  // Stop typing when chatId changes or component unmounts
+  // useEffect(() => {
+  //   return () => {
+  //     // Send typing:stop when chatId changes or component unmounts
+  //     if (typing && chatId) {
+  //       emit("typing:stop", { chatId });
+  //     }
+  //   };
+  // }, [chatId, emit]);
 
   // Edit mode
   useEffect(() => {
@@ -78,19 +88,24 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
     const value = e.target.value;
     setMessage(value);
 
-    // Typing indicator
-    if (value.length > 0 && !typing) {
+    // Typing indicator logic - only change state when necessary
+    const shouldBeTyping = value.length > 0;
+    
+    if (shouldBeTyping && !typing) {
+      // Start typing - only set once when user starts typing
       setTyping(true);
-    } else if (value.length === 0 && typing) {
+    } else if (!shouldBeTyping && typing) {
+      // Stop typing immediately when input is empty
       setTyping(false);
     }
 
-    // Clear typing indicator after delay
+    // Manage timeout for auto-stop typing
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    if (value.length > 0) {
+    if (shouldBeTyping) {
+      // Set timeout to stop typing after user stops typing for 2 seconds
       typingTimeoutRef.current = setTimeout(() => {
         setTyping(false);
       }, 2000);

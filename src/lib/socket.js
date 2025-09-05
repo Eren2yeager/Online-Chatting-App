@@ -1,6 +1,6 @@
 "use client"
 import { io } from 'socket.io-client';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 
 // Socket context
@@ -160,23 +160,35 @@ export function useSocketListener(event, callback) {
  */
 export function useTypingIndicator(chatId) {
   const { socket } = useSocket();
-  const [typingUsers, setTypingUsers] = useState(new Set());
+  const [typingUsers, setTypingUsers] = useState(new Map()); // Use Map with userId as key
 
   useEffect(() => {
     if (!socket || !chatId) return;
 
     const handleTypingStart = (data) => {
-      if (data.chatId === chatId) {
-        setTypingUsers(prev => new Set([...prev, data.userName]));
+      if (data.chatId === chatId && data.user) {
+        const userId = data.user._id || data.user.id;
+        setTypingUsers(prev => {
+          // Only update if user is not already typing
+          if (prev.has(userId)) return prev;
+          
+          const newMap = new Map(prev);
+          newMap.set(userId, data.user);
+          return newMap;
+        });
       }
     };
 
     const handleTypingStop = (data) => {
-      if (data.chatId === chatId) {
+      if (data.chatId === chatId && data.user) {
+        const userId = data.user._id || data.user.id;
         setTypingUsers(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(data.userName);
-          return newSet;
+          // Only update if user is actually typing
+          if (!prev.has(userId)) return prev;
+          
+          const newMap = new Map(prev);
+          newMap.delete(userId);
+          return newMap;
         });
       }
     };
@@ -190,7 +202,8 @@ export function useTypingIndicator(chatId) {
     };
   }, [socket, chatId]);
 
-  return Array.from(typingUsers);
+  // Memoize the result to prevent unnecessary re-renders
+  return useMemo(() => Array.from(typingUsers.values()), [typingUsers]);
 }
 
 /**

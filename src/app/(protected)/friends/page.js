@@ -117,6 +117,12 @@ export default function FriendsPage() {
 
   const startChat = async (friendId) => {
     try {
+      // Defensive: ensure friendId is a string
+      if (!friendId || typeof friendId !== "string") {
+        toast.error("Invalid friend ID");
+        return;
+      }
+
       // First check if a chat already exists
       const response = await fetch("/api/chats");
       const data = await response.json();
@@ -126,10 +132,14 @@ export default function FriendsPage() {
             !chat.isGroup &&
             chat.participants.length === 2 &&
             chat.participants.some(
-              (p) => p._id === friendId || p === friendId
+              (p) =>
+                (typeof p === "object" && (p._id === friendId || p._id?.toString() === friendId)) ||
+                (typeof p === "string" && p === friendId)
             ) &&
             chat.participants.some(
-              (p) => p._id === session.user.id || p === session.user.id
+              (p) =>
+                (typeof p === "object" && (p._id === session.user.id || p._id?.toString() === session.user.id)) ||
+                (typeof p === "string" && p === session.user.id)
             )
         );
         if (existingChat) {
@@ -137,7 +147,14 @@ export default function FriendsPage() {
           return;
         }
       }
+
       // Create new chat
+      // The API expects the current user to be included in participants, so include both friendId and session.user.id
+      const participants = [friendId];
+      if (session?.user?.id && session.user.id !== friendId) {
+        participants.push(session.user.id);
+      }
+
       const createResponse = await fetch("/api/chats", {
         method: "POST",
         headers: {
@@ -145,18 +162,19 @@ export default function FriendsPage() {
         },
         body: JSON.stringify({
           isGroup: false,
-          participants: [friendId],
+          participants,
         }),
       });
-      if (createResponse.ok) {
-        const newChat = await createResponse.json();
-        if (newChat.success) {
-          router.push(`/chats/${newChat.data._id}`);
-        } else {
-          toast.error("Failed to start chat");
-        }
+
+      const newChat = await createResponse.json();
+
+      if (createResponse.ok && newChat.success && newChat.data && newChat.data._id) {
+        router.push(`/chats/${newChat.data._id}`);
+      } else if (createResponse.ok && newChat.success && newChat.data && newChat.message === "Chat already exists") {
+        // If API returns existing chat, go to it
+        router.push(`/chats/${newChat.data._id}`);
       } else {
-        toast.error("Failed to start chat");
+        toast.error(newChat?.error || "Failed to start chat");
       }
     } catch (error) {
       toast.error("Failed to start chat");

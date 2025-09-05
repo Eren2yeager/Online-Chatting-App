@@ -11,6 +11,8 @@ import { chatCreateSchema } from '@/lib/validators.js';
  * POST /api/chats
  * Create a new chat (1:1 or group)
  */
+import mongoose from 'mongoose';
+
 export async function POST(request) {
   try {
     // Check authentication
@@ -21,9 +23,6 @@ export async function POST(request) {
         { status: 401 }
       );
     }
-
-    // Note: Rate limiting is disabled here because the express-style middleware
-    // in lib/rateLimit is not compatible with Next.js App Router handlers.
 
     await connectDB();
 
@@ -39,17 +38,37 @@ export async function POST(request) {
       );
     }
 
-    const { isGroup, name, participants } = validatedData;
+    let { isGroup, name, participants } = validatedData;
     const userId = session.user.id;
 
+    // Ensure all participant IDs are strings
+    participants = participants.map(id => id.toString());
+
     // Ensure current user is included in participants
-    if (!participants.includes(userId)) {
-      participants.push(userId);
+    if (!participants.includes(userId.toString())) {
+      participants.push(userId.toString());
+    }
+
+    // Convert all participant IDs to ObjectId
+    const participantObjectIds = participants.map(id => {
+      try {
+        return new mongoose.Types.ObjectId(id);
+      } catch (e) {
+        // Invalid ObjectId
+        return null;
+      }
+    });
+
+    if (participantObjectIds.includes(null)) {
+      return NextResponse.json(
+        { error: 'Invalid participant ID(s)' },
+        { status: 400 }
+      );
     }
 
     // Validate participants exist and are friends (for 1:1 chats)
-    const participantUsers = await User.find({ _id: { $in: participants } });
-    if (participantUsers.length !== participants.length) {
+    const participantUsers = await User.find({ _id: { $in: participantObjectIds } });
+    if (participantUsers.length !== participantObjectIds.length) {
       return NextResponse.json(
         { error: 'One or more participants not found' },
         { status: 400 }
@@ -57,10 +76,10 @@ export async function POST(request) {
     }
 
     // For 1:1 chats, ensure participants are friends
-    if (!isGroup && participants.length === 2) {
+    if (!isGroup && participantObjectIds.length === 2) {
       const currentUser = await User.findById(userId);
-      const otherUser = participantUsers.find(p => p._id.toString() !== userId);
-      
+      const otherUser = participantUsers.find(p => p._id.toString() !== userId.toString());
+
       if (!currentUser.friends.some(friendId => friendId.toString() === otherUser._id.toString())) {
         return NextResponse.json(
           { error: 'Can only create 1:1 chats with friends' },
@@ -69,11 +88,11 @@ export async function POST(request) {
       }
     }
 
-    // Check if 1:1 chat already exists
-    if (!isGroup && participants.length === 2) {
+    // Check if 1:1 chat already exists (order-insensitive)
+    if (!isGroup && participantObjectIds.length === 2) {
       const existingChat = await Chat.findOne({
         isGroup: false,
-        participants: { $all: participants }
+        participants: { $all: participantObjectIds, $size: 2 }
       });
 
       if (existingChat) {
@@ -89,9 +108,9 @@ export async function POST(request) {
     const chat = await Chat.create({
       isGroup,
       name: isGroup ? name : null,
-      participants,
-      admins: isGroup ? [userId] : [],
-      createdBy: userId,
+      participants: participantObjectIds,
+      admins: isGroup ? [new mongoose.Types.ObjectId(userId)] : [],
+      createdBy: new mongoose.Types.ObjectId(userId),
     });
 
     // Populate participant details
@@ -107,12 +126,11 @@ export async function POST(request) {
   } catch (error) {
     console.error('Error creating chat:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error?.message },
       { status: 500 }
     );
   }
 }
-
 /**
  * GET /api/chats
  * Get chats for the authenticated user

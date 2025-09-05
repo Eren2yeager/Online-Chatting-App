@@ -116,7 +116,7 @@ export default function ChatWindow({
   };
 
   useEffect(() => {
-    // scrollToBottom();
+    scrollToBottom();
     // Mark chat read whenever messages change
     if (messages.length > 0) {
       const lastId = messages[messages.length - 1]?._id;
@@ -264,8 +264,12 @@ export default function ChatWindow({
 
   
   const handleSendMessage = async (text, media = [], replyToId = null) => {
+    if (!isConnected) {
+      console.error("Socket not connected, cannot perform action:");
+      return;
+    }
     if (!text.trim() && media.length === 0) return;
-
+    
     try {
       if (editMessage) {
         // Handle edit mode
@@ -289,7 +293,8 @@ export default function ChatWindow({
         });
         if (res?.success) {
           if (replyToMessage) setReplyToMessage(null);
-        } else {
+        }
+         else {
           console.error("Failed to send message:", res?.error);
         }
       }
