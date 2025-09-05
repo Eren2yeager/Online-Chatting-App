@@ -26,7 +26,7 @@ const NotificationSchema = new mongoose.Schema({
     maxlength: 500
   },
   // Additional data for the notification
-  data: {
+  data: { 
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },

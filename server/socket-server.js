@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 
 import { createServer } from "http";
+import next from "next";
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
@@ -26,20 +27,26 @@ mongoose.connect(MONGODB_URI, {
   family: 4,
 });
 
-const PORT = process.env.SOCKET_SERVER_PORT || 3001;
+const port = parseInt(process.env.PORT || "3000", 10);
+const dev = process.env.NODE_ENV !== "production";
+const app = next({ dev });
+const handle = app.getRequestHandler();
 
-// Create HTTP server
-const httpServer = createServer();
+let io = null;
 
-// Create Socket.IO server with CORS configuration
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.NEXTAUTH_URL || "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-  transports: ["websocket", "polling"],
-});
+// Bootstrap server without top-level await for compatibility
+async function start() {
+  await app.prepare();
+
+  // Create HTTP server and attach Next handler
+  const httpServer = createServer((req, res) => {
+    handle(req, res);
+  });
+
+  // Create Socket.IO server (same HTTP server, same port). No CORS needed when same-origin.
+  io = new Server(httpServer, {
+    transports: ["websocket", "polling"],
+  });
 
 // Store user socket mappings
 const userSockets = new Map();
@@ -422,6 +429,154 @@ io.on("connection", async (socket) => {
     }
   });
 
+
+  // Promote admin in group chat
+  socket.on("admin:promote", async (data) => {
+    try {
+      const { chatId, userId } = data;
+      if (!chatId || !userId) return;
+
+      // Find the chat
+      const chat = await Chat.findById(chatId)
+        .populate("participants", "_id")
+        .populate("admins", "_id")
+        .populate("createdBy", "_id");
+
+      if (!chat) {
+        socket.emit("error", { message: "Chat not found" });
+        return;
+      }
+      if (!chat.isGroup) {
+        socket.emit("error", { message: "Only groups have admins" });
+        return;
+      }
+      // Only the creator can promote admins
+      if (!chat.createdBy || chat.createdBy._id.toString() !== socket.userId) {
+        socket.emit("error", { message: "Only the creator can promote admins" });
+        return;
+      }
+      // The user to be promoted must be a participant
+      const isParticipant = chat.participants.some(
+        (p) => p._id.toString() === userId
+      );
+      if (!isParticipant) {
+        socket.emit("error", { message: "User is not a participant" });
+        return;
+      }
+
+      // Promote: add userId to admins (ensures uniqueness)
+      await Chat.updateOne({ _id: chatId }, { $addToSet: { admins: userId } });
+
+      // Create a system message for the promotion event and emit it
+      let systemMessage = null;
+      try {
+        // Populate targets with full user info
+        const targetUsers = await User.find({ _id: { $in: [userId] } }).select("name handle image");
+        systemMessage = await Message.create({
+          chatId,
+          sender: socket.userId,
+          type: "system",
+          text: "",
+          system: { event: "admin_promoted", targets: targetUsers.map(u => u.toObject()) },
+        });
+        if (systemMessage) {
+          await systemMessage.populate("sender", "name image handle");
+          io.to(`chat:${chatId}`).emit("message:new", {
+            message: systemMessage,
+            chatId,
+          });
+        }
+      } catch (_) {
+        // Ignore system message errors
+      }
+
+      // Return the updated chat with full info
+      const updated = await Chat.findById(chatId)
+        .populate("participants", "name handle image status lastSeen")
+        .populate("admins", "name handle image")
+        .populate("createdBy", "name handle image");
+
+      // Notify all participants in the chat room
+      io.to(`chat:${chatId}`).emit("admin:promoted", {
+        chatId,
+        userId,
+        chat: updated,
+      });
+    } catch (error) {
+      console.error("Error promoting admin:", error);
+      socket.emit("error", { message: "Failed to promote admin" });
+    }
+  });
+
+  // Demote admin in group chat
+  socket.on("admin:demote", async (data) => {
+    try {
+      const { chatId, userId } = data;
+      if (!chatId || !userId) return;
+
+      // Find the chat
+      const chat = await Chat.findById(chatId)
+        .populate("admins", "_id")
+        .populate("createdBy", "_id");
+
+      if (!chat) {
+        socket.emit("error", { message: "Chat not found" });
+        return;
+      }
+      if (!chat.isGroup) {
+        socket.emit("error", { message: "Only groups have admins" });
+        return;
+      }
+      // Only the creator can demote admins
+      if (!chat.createdBy || chat.createdBy._id.toString() !== socket.userId) {
+        socket.emit("error", { message: "Only the creator can demote admins" });
+        return;
+      }
+
+      // Demote: remove userId from admins
+      await Chat.updateOne({ _id: chatId }, { $pull: { admins: userId } });
+
+      // Create a system message for the demotion event and emit it
+      let systemMessage = null;
+      try {
+        // Populate the targets (demoted user) with name, handle, image
+        const demotedUser = await User.findById(userId).select("name handle image");
+        systemMessage = await Message.create({
+          chatId,
+          sender: socket.userId,
+          type: "system",
+          text: "",
+          system: { event: "admin_demoted", targets: demotedUser ? [demotedUser] : [] },
+        });
+        if (systemMessage) {
+          await systemMessage.populate("sender", "name image handle");
+          io.to(`chat:${chatId}`).emit("message:new", {
+            message: systemMessage,
+            chatId,
+          });
+        }
+      } catch (_) {
+        // Ignore system message errors
+      }
+
+      // Return the updated chat with full info
+      const updated = await Chat.findById(chatId)
+        .populate("participants", "name handle image status lastSeen")
+        .populate("admins", "name handle image")
+        .populate("createdBy", "name handle image");
+
+      // Notify all participants in the chat room
+      io.to(`chat:${chatId}`).emit("admin:demoted", {
+        chatId,
+        userId,
+        chat: updated,
+      });
+    } catch (error) {
+      console.error("Error demoting admin:", error);
+      socket.emit("error", { message: "Failed to demote admin" });
+    }
+  });
+
   // Handle disconnect
   socket.on("disconnect", async () => {
     console.log(`User ${socket.userId} disconnected`);
@@ -435,17 +590,23 @@ io.on("connection", async (socket) => {
   });
 });
 
-// Start server
-httpServer.listen(PORT, () => {
-  console.log(`Socket.IO server running on port ${PORT}`);
-});
-
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down gracefully");
-  httpServer.close(() => {
-    console.log("Socket.IO server closed");
-    mongoose.connection.close();
-    process.exit(0);
+  // Start unified server (Next.js + Socket.IO)
+  httpServer.listen(port, () => {
+    console.log(`Unified server running on http://localhost:${port}`);
   });
+
+  // Graceful shutdown
+  process.on("SIGTERM", () => {
+    console.log("SIGTERM received, shutting down gracefully");
+    httpServer.close(() => {
+      console.log("HTTP server closed");
+      mongoose.connection.close();
+      process.exit(0);
+    });
+  });
+}
+
+start().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });

@@ -28,10 +28,10 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Don't allow users to view their own profile through this endpoint
-    if (user._id.toString() === session.user.id) {
-      return NextResponse.json({ error: 'Cannot view your own profile through invite link' }, { status: 400 });
-    }
+    // // Don't allow users to view their own profile through this endpoint
+    // if (user._id.toString() === session.user.id) {
+    //   return NextResponse.json({ error: 'Cannot view your own profile through invite link' }, { status: 400 });
+    // }
 
     return NextResponse.json(user);
   } catch (error) {

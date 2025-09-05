@@ -12,7 +12,7 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { requestId } = params;
+    const { requestId } =await  params;
     const body = await request.json();
     const { action } = body; // 'accept', 'reject', or 'cancel'
 

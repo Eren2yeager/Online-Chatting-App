@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import User from '../models/User.js';
 import connectDB from './mongodb.js';
-
+import CredentialsProvider from 'next-auth/providers/credentials';
 
 
 export const authOptions = {
@@ -11,7 +11,29 @@ export const authOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
+    CredentialsProvider({
+      name: "Postman Login",
+      credentials: {
+        username: { label: "Email", type: "text" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        // For testing purpose, you can just return a mock user
+        if (credentials?.username === "postman@test.com" &&
+            credentials?.password === "1234") {
+          return {
+            id: "999",
+            name: "Postman User",
+            email: "postman@test.com"
+          };
+        }
+
+        // Return null if login fails
+        return null;
+      }
+    })
   ],
+  
   session: {
     strategy: 'jwt',
   },
@@ -64,6 +86,8 @@ export const authOptions = {
     async session({ session, token }) {
       try {
         await connectDB();
+        console.log("session", session);
+        console.log("token", token);
         const dbUser = await User.findOne({ email: session.user.email });
         if (dbUser) {
           session.user.id = dbUser._id.toString();
@@ -77,6 +101,7 @@ export const authOptions = {
         console.error("Session callback error:", error);
         return session;
       }
+
     },
     async jwt({ token, user, account }) {
       if (account && user) {

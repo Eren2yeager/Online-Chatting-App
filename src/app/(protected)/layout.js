@@ -11,8 +11,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body className="bg-white">
+
         <SecureLayout>
           {/* <SocketProvider> */}
           <MediaFullViewContextProvider>
@@ -29,7 +28,6 @@ export default function RootLayout({ children }) {
             {/* </SocketProvider> */}
           </MediaFullViewContextProvider>
         </SecureLayout>
-      </body>
-    </html>
+
   );
 }

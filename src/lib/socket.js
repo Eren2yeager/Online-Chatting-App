@@ -26,8 +26,8 @@ export function SocketProvider({ children }) {
       return;
     }
 
-    // Create socket connection with authentication
-    const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
+    // Create socket connection with authentication (same-origin)
+    const newSocket = io({
       auth: {
         // Send user id as token for server-side authentication fallback
         token: session?.user?.id,

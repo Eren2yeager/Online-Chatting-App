@@ -12,7 +12,7 @@ export async function GET(request, { params }) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { chatId } = params;
+    const { chatId } =await params;
 
     await connectDB();
 

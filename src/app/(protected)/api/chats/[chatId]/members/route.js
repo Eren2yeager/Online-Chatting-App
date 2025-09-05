@@ -24,7 +24,7 @@ export async function POST(request, { params }) {
 
     if (!userIds.length) {
       return Response.json({ success: false, error: 'No users provided' }, { status: 400 });
-    }
+    } 
 
     await connectDB();
 

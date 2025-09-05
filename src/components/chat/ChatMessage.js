@@ -353,7 +353,7 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
               );
             })}
             {/* If only one media, show in old style (full width) */}
-            {message.media.length === 1 && (() => {
+            {/* {message.media.length === 1 && (() => {
               const media = message.media[0];
               if (media.mime.startsWith("audio/")) {
                 return (
@@ -408,7 +408,7 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
                 );
               }
               return null;
-            })()}
+            })()} */}
             {/* Overlay for clicking anywhere to open full viewer */}
             {message.media.length > 1 && (
               <button

@@ -1,32 +1,14 @@
-
-
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-  import { FaCrown } from "react-icons/fa";
-
 import {
   XMarkIcon,
   UserGroupIcon,
-  UserPlusIcon,
-  TrashIcon,
-  MagnifyingGlassIcon,
-  PhotoIcon,
-  DocumentIcon,
-  LinkIcon,
-  CalendarIcon,
   UsersIcon,
-  CogIcon,
-  ShieldCheckIcon,
-  UserMinusIcon,
+  PhotoIcon,
+  LinkIcon,
   EyeIcon,
-  EyeSlashIcon,
-  CheckIcon,
-  ExclamationTriangleIcon,
-  PlayIcon,
-  SpeakerWaveIcon,
 } from "@heroicons/react/24/outline";
 import { useToast } from "@/components/layout/ToastContext";
 import { useMediaFullView } from "@/components/layout/mediaFullViewContext";
@@ -35,20 +17,18 @@ import MembersTab from "./chatSpareParts/membersTab";
 import MediaTab from "./chatSpareParts/mediaTab";
 import LinksTab from "./chatSpareParts/linksTab";
 import { useSession } from 'next-auth/react';
-export default function ManageGroupModal({
+
+export default function ManageChatModal({
   isOpen,
   onClose,
   chat,
   onUpdated,
   isCreator,
   isAdmin,
+  handleDemoteAdmin,handlePromoteAdmin
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [imageFile, setImageFile] = useState(null);
-  const [promoteId, setPromoteId] = useState("");
-  const [demoteId, setDemoteId] = useState("");
-  const [selectedMembers, setSelectedMembers] = useState(new Set());
-  const [showBulkActions, setShowBulkActions] = useState(false);
   const [editForm, setEditForm] = useState({
     name: chat?.name || "",
     description: chat?.description || "",
@@ -60,39 +40,49 @@ export default function ManageGroupModal({
   const [memberSearch, setMemberSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [showAllPromote, setShowAllPromote] = useState(false);
-  const [showAllDemote, setShowAllDemote] = useState(false);
-  const [showInviteLink, setShowInviteLink] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [mediaFiles, setMediaFiles] = useState([]);
   const [links, setLinks] = useState([]);
 
   const participants = chat?.participants || [];
   const admins = chat?.admins || [];
+  const isGroup = !!chat?.isGroup;
   const showToast = useToast?.() || (() => {});
   const { setMediaToView } = useMediaFullView();
   const { data: session } = useSession();
-  // Group statistics
-  const groupStats = useMemo(() => ({
+
+  const stats = useMemo(() => ({
     totalMembers: participants.length,
     totalAdmins: admins.length,
     onlineMembers: participants.filter(p => p.status === 'online').length,
     createdDate: chat?.createdAt ? new Date(chat.createdAt).toLocaleDateString() : 'Unknown',
   }), [participants, admins, chat?.createdAt]);
 
+  // For DM chats, compute the other participant for overview
+  const otherUser = useMemo(() => {
+    if (isGroup) return null;
+    const currentUserId = (typeof window !== 'undefined' && session?.user?.id) || null;
+    const list = chat?.participantsDetailed || chat?.participants || [];
+    // participants may be objects with _id/name/handle or just ids
+    const items = list.map((p) => (typeof p === 'string' ? { _id: p } : p));
+    return items.find((p) => (p?._id?.toString?.() || p?._id) !== currentUserId) || items[0] || null;
+  }, [isGroup, chat?.participants, chat?.participantsDetailed, session?.user?.id]);
+
   useEffect(() => {
     if (isOpen) {
       fetchFriends();
       generateInviteLink();
-      fetchGroupMedia();
-      fetchGroupLinks();
+      fetchMedia();
+      fetchLinks();
     }
   }, [isOpen]);
 
   const generateInviteLink = () => {
-    if (chat?._id) {
+    if (chat?._id && isGroup) {
       const baseUrl = window.location.origin;
       setInviteLink(`${baseUrl}/invite/${chat._id}`);
+    } else {
+      setInviteLink("");
     }
   };
 
@@ -107,7 +97,7 @@ export default function ManageGroupModal({
     }
   };
 
-  const fetchGroupMedia = async () => {
+  const fetchMedia = async () => {
     try {
       const res = await fetch(`/api/chats/${chat._id}/media`);
       if (res.ok) {
@@ -119,7 +109,7 @@ export default function ManageGroupModal({
     }
   };
 
-  const fetchGroupLinks = async () => {
+  const fetchLinks = async () => {
     try {
       const res = await fetch(`/api/chats/${chat._id}/links`);
       if (res.ok) {
@@ -154,8 +144,8 @@ export default function ManageGroupModal({
   };
 
   const saveSettings = async () => {
-    if (!isAdmin) {
-      showToast({ text: "Only admins can change group settings" });
+    if (!isGroup || !isAdmin) {
+      showToast({ text: isGroup ? "Only admins can change group settings" : "No settings for direct chats" });
       return;
     }
 
@@ -172,7 +162,7 @@ export default function ManageGroupModal({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast({ text: "Group settings saved" });
+        showToast({ text: "Chat settings saved" });
         onUpdated?.(data.data);
       } else throw new Error(data.error || "Save failed");
     } catch (error) {
@@ -182,61 +172,9 @@ export default function ManageGroupModal({
     }
   };
 
-  const promote = async () => {
-    if (!isAdmin) {
-      showToast({ text: "Only admins can promote members" });
-      return;
-    }
-
-    setLoading(true);
-    if (!promoteId) return;
-    try {
-      const res = await fetch(`/api/chats/${chat._id}/admins`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: promoteId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast({ text: "Promoted to admin" });
-        onUpdated?.(data.data);
-      } else throw new Error(data.error || "Promote failed");
-    } catch (error) {
-      showToast({ text: "Failed to promote member" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const demote = async () => {
-    if (!isCreator) {
-      showToast({ text: "Only the creator can demote admins" });
-      return;
-    }
-
-    setLoading(true);
-    if (!demoteId) return;
-    try {
-      const res = await fetch(`/api/chats/${chat._id}/admins`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: demoteId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast({ text: "Admin demoted" });
-        onUpdated?.(data.data);
-      } else throw new Error(data.error || "Demote failed");
-    } catch (error) {
-      showToast({ text: "Failed to demote admin" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleRemoveMember = async (userId) => {
-    if (!isAdmin) {
-      showToast({ text: "Only admins can remove members" });
+    if (!isGroup || !isAdmin) {
+      showToast({ text: "Only group admins can remove members" });
       return;
     }
 
@@ -261,8 +199,8 @@ export default function ManageGroupModal({
   };
 
   const handleAddMembers = async (userIds) => {
-    if (!isAdmin) {
-      showToast({ text: "Only admins can add members" });
+    if (!isGroup || !isAdmin) {
+      showToast({ text: "Only group admins can add members" });
       return;
     }
 
@@ -277,7 +215,7 @@ export default function ManageGroupModal({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast({ text: "Member added" });
+        showToast({ text: "Members added" });
         onUpdated?.(data.data);
       } else setError(data.error || "Failed to add members");
     } catch {
@@ -288,13 +226,12 @@ export default function ManageGroupModal({
   };
 
   const handleLeaveGroup = async () => {
+    if (!isGroup) return;
     if (isCreator) {
       showToast({ text: "Creator cannot leave the group" });
       return;
     }
-
     if (!confirm("Are you sure you want to leave this group?")) return;
-
     try {
       setLoading(true);
       const res = await fetch(`/api/chats/${chat._id}/members`, {
@@ -305,7 +242,6 @@ export default function ManageGroupModal({
       if (res.ok) {
         showToast({ text: "Left the group" });
         onClose();
-        // Redirect to chats list
         window.location.href = "/chats";
       }
     } catch (error) {
@@ -344,12 +280,18 @@ export default function ManageGroupModal({
 
   if (!isOpen) return null;
 
-  const tabs = [
-    { id: "overview", label: "Overview", icon: EyeIcon },
-    { id: "members", label: "Members", icon: UsersIcon },
-    { id: "media", label: "Media", icon: PhotoIcon },
-    { id: "links", label: "Links", icon: LinkIcon },
-  ];
+  const tabs = isGroup
+    ? [
+        { id: "overview", label: "Overview", icon: EyeIcon },
+        { id: "members", label: "Members", icon: UsersIcon },
+        { id: "media", label: "Media", icon: PhotoIcon },
+        { id: "links", label: "Links", icon: LinkIcon },
+      ]
+    : [
+        { id: "overview", label: "Overview", icon: EyeIcon },
+        { id: "media", label: "Media", icon: PhotoIcon },
+        { id: "links", label: "Links", icon: LinkIcon },
+      ];
 
   return (
     <div
@@ -363,38 +305,34 @@ export default function ManageGroupModal({
         className="bg-white rounded-2xl shadow-2xl w-full h-auto max-w-6xl max-h-[92vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
             <UserGroupIcon className="h-6 w-6 text-blue-500" />
             <div>
-            <h2 className="text-xl font-semibold text-gray-900">
-                {chat?.name || "Group Chat"}
-            </h2>
-              <p className="text-sm text-gray-500">
-                {groupStats.totalMembers} members
-              </p>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {chat?.name || (isGroup ? "Group Chat" : "Chat")}
+              </h2>
+              {isGroup && (
+                <p className="text-sm text-gray-500">
+                  {stats.totalMembers} members
+                </p>
+              )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100"
-          >
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100">
             <XMarkIcon className="h-5 w-5 text-gray-500" />
           </button>
         </div>
 
-        <div className="flex h-[calc(92vh-120px)]">
-          {/* Left Sidebar - Navigation */}
-          <div className="w-auto border-r border-gray-200 bg-gray-50">
-            <nav className="p-2">
+        <div className="flex  flex-col   h-[calc(92vh-120px)]">
+            <nav className="p-2   w-fit flex justify-between">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center my-2 p-2 rounded-lg text-left transition-colors ${
+                    className={`w-full flex items-center mx-2 my-2 p-2 rounded-lg text-left transition-colors ${
                       activeTab === tab.id
                         ? "bg-blue-100 text-blue-700 border border-blue-200"
                         : "text-gray-700 hover:bg-gray-100"
@@ -406,9 +344,7 @@ export default function ManageGroupModal({
                 );
               })}
             </nav>
-          </div>
 
-          {/* Right Content Area */}
           <div className="flex-1 overflow-y-auto">
             <AnimatePresence mode="wait">
               {activeTab === "overview" && (
@@ -421,7 +357,7 @@ export default function ManageGroupModal({
                 >
                   <OverviewTab
                     chat={chat}
-                    groupStats={groupStats}
+                    groupStats={stats}
                     editForm={editForm}
                     setEditForm={setEditForm}
                     imageFile={imageFile}
@@ -432,23 +368,15 @@ export default function ManageGroupModal({
                     isCreator={isCreator}
                     participants={participants}
                     admins={admins}
-                    promote={promote}
-                    demote={demote}
-                    promoteId={promoteId}
-                    setPromoteId={setPromoteId}
-                    demoteId={demoteId}
-                    setDemoteId={setDemoteId}
-                    showAllPromote={showAllPromote}
-                    setShowAllPromote={setShowAllPromote}
-                    showAllDemote={showAllDemote}
-                    setShowAllDemote={setShowAllDemote}
                     inviteLink={inviteLink}
                     handleLeaveGroup={handleLeaveGroup}
+                    isGroup={isGroup}
+                    otherUser={otherUser}
                   />
                 </motion.div>
               )}
 
-              {activeTab === "members" && (
+              {isGroup && activeTab === "members" && (
                 <motion.div
                   key="members"
                   initial={{ opacity: 0, x: 20 }}
@@ -464,6 +392,7 @@ export default function ManageGroupModal({
                     isAdmin={isAdmin}
                     isCreator={isCreator}
                     chat={chat}
+                    admins={admins}
                     friends={filteredFriends}
                     search={search}
                     setSearch={setSearch}
@@ -471,6 +400,11 @@ export default function ManageGroupModal({
                     currentMemberIds={currentMemberIds}
                     loading={loading}
                     error={error}
+                    handlePromoteAdmin ={handlePromoteAdmin}
+                    handleDemoteAdmin ={handleDemoteAdmin}
+                    onPromoteDemoteApi={{
+                      promoteEndpoint: `/api/chats/${chat._id}/admins`,
+                    }}
                   />
                 </motion.div>
               )}
@@ -490,8 +424,6 @@ export default function ManageGroupModal({
                 </motion.div>
               )}
 
-
-
               {activeTab === "links" && (
                 <motion.div
                   key="links"
@@ -510,3 +442,5 @@ export default function ManageGroupModal({
     </div>
   );
 }
+
+

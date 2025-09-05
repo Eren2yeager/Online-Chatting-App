@@ -7,23 +7,21 @@ import { motion } from 'framer-motion';
 import { 
   UserPlusIcon, 
   UserMinusIcon, 
-  CheckIcon, 
-  XMarkIcon,
-  ClockIcon,
   UserGroupIcon,
   MagnifyingGlassIcon,
-  QrCodeIcon,
-  XCircleIcon,
-  ChatBubbleLeftRightIcon
+  ChatBubbleLeftRightIcon,
+  UserIcon,
+  CalendarIcon,
+  GlobeAltIcon,
+  XMarkIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
 export default function FriendsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('friends');
   const [friends, setFriends] = useState([]);
-  const [friendRequests, setFriendRequests] = useState({ incoming: [], outgoing: [] });
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -31,6 +29,8 @@ export default function FriendsPage() {
     handle: '',
     message: ''
   });
+  const [filterStatus, setFilterStatus] = useState('all'); // all, online, offline
+  const [viewMode, setViewMode] = useState('grid'); // grid, list
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -46,31 +46,11 @@ export default function FriendsPage() {
 
   const fetchFriendsData = async () => {
     try {
-      const [friendsRes, requestsRes] = await Promise.all([
-        fetch('/api/users/friends'),
-        fetch('/api/friends/requests')
-      ]);
+      const friendsRes = await fetch('/api/users/friends');
 
       if (friendsRes.ok) {
         const friendsData = await friendsRes.json();
         setFriends(Array.isArray(friendsData) ? friendsData : (friendsData.data || []));
-      }
-
-      if (requestsRes.ok) {
-        const requestsData = await requestsRes.json();
-        // Only include requests with status 'pending'
-        const filterPending = (arr) => (Array.isArray(arr) ? arr.filter(r => r.status === 'pending') : []);
-        setFriendRequests(
-          requestsData.success
-            ? {
-                incoming: filterPending(requestsData.incoming),
-                outgoing: filterPending(requestsData.outgoing)
-              }
-            : {
-                incoming: filterPending(requestsData.incoming),
-                outgoing: filterPending(requestsData.outgoing)
-              }
-        );
       }
     } catch (error) {
       console.error('Error fetching friends data:', error);
@@ -104,43 +84,51 @@ export default function FriendsPage() {
     }
   };
 
-  const handleFriendRequest = async (requestId, action) => {
+  const startChat = async (friendId) => {
     try {
-      const response = await fetch(`/api/friends/requests/${requestId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
+      // First check if a chat already exists
+      const response = await fetch("/api/chats");
+      const data = await response.json();
+      if (data.success) {
+        const existingChat = data.data.find(
+          (chat) =>
+            !chat.isGroup &&
+            chat.participants.length === 2 &&
+            chat.participants.some(
+              (p) => p._id === friendId || p === friendId
+            ) &&
+            chat.participants.some(
+              (p) => p._id === session.user.id || p === session.user.id
+            )
+        );
+        if (existingChat) {
+          router.push(`/chats/${existingChat._id}`);
+          return;
+        }
+      }
+      // Create new chat
+      const createResponse = await fetch("/api/chats", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          isGroup: false,
+          participants: [friendId],
+        }),
       });
-
-      if (response.ok) {
-        toast.success(action === 'accept' ? 'Friend request accepted!' : 'Friend request rejected!');
-        fetchFriendsData(); // Refresh data
+      if (createResponse.ok) {
+        const newChat = await createResponse.json();
+        if (newChat.success) {
+          router.push(`/chats/${newChat.data._id}`);
+        } else {
+          toast.error("Failed to start chat");
+        }
       } else {
-        toast.error('Failed to process friend request');
+        toast.error("Failed to start chat");
       }
     } catch (error) {
-      console.error('Error processing friend request:', error);
-      toast.error('Failed to process friend request');
-    }
-  };
-
-  const cancelFriendRequest = async (requestId) => {
-    try {
-      const response = await fetch(`/api/friends/requests/${requestId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel' })
-      });
-
-      if (response.ok) {
-        toast.success('Friend request cancelled!');
-        fetchFriendsData(); // Refresh data
-      } else {
-        toast.error('Failed to cancel friend request');
-      }
-    } catch (error) {
-      console.error('Error cancelling friend request:', error);
-      toast.error('Failed to cancel friend request');
+      toast.error("Failed to start chat");
     }
   };
 
@@ -164,10 +152,19 @@ export default function FriendsPage() {
     }
   };
 
-  const filteredFriends = friends?.filter(friend =>
-    friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    friend.handle.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredFriends = friends?.filter(friend => {
+    const matchesSearch = friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         friend.handle.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (filterStatus === 'all') return matchesSearch;
+    if (filterStatus === 'online') return matchesSearch && friend.status === 'online';
+    if (filterStatus === 'offline') return matchesSearch && friend.status !== 'online';
+    
+    return matchesSearch;
+  });
+
+  const onlineFriends = friends?.filter(friend => friend.status === 'online').length || 0;
+  const totalFriends = friends?.length || 0;
 
   if (loading) {
     return (
@@ -178,46 +175,95 @@ export default function FriendsPage() {
   }
 
   return (
-    <div className="h-full bg-gradient-to-br from-blue-50 to-indigo-100 py-8 overflow-y-auto">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="overflow-auto h-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Friends</h1>
-          <p className="text-gray-600">Manage your connections and friend requests</p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Friends</h1>
+          <p className="text-gray-600 text-lg">Connect and chat with your friends</p>
+          
+          {/* Stats */}
+          <div className="flex justify-center gap-8 mt-6">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{totalFriends}</div>
+              <div className="text-sm text-gray-600">Total Friends</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{onlineFriends}</div>
+              <div className="text-sm text-gray-600">Online Now</div>
+            </div>
+          </div>
         </motion.div>
 
-        {/* Action Buttons */}
+        {/* Controls */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="flex flex-wrap gap-4 justify-center mb-8"
+          className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 mb-8"
         >
+          {/* Search - Full width on mobile */}
+          <div className="relative mb-4 sm:mb-0">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search friends..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Filters and Actions - Responsive layout */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
+            {/* Status Filter */}
+            <div className="flex items-center gap-2 min-w-0">
+              <FunnelIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="flex-1 sm:flex-none px-2 sm:px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              >
+                <option value="all">All</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+              </select>
+            </div>
+
+            {/* View Mode */}
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
           <button
-            onClick={() => setShowAddFriend(true)}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center"
-          >
-            <UserPlusIcon className="w-5 h-5 mr-2" />
-            Add Friend
+                onClick={() => setViewMode('grid')}
+                className={`px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+                  viewMode === 'grid' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
+                }`}
+              >
+                Grid
           </button>
           <button
-            onClick={() => router.push('/invite')}
-            className="bg-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-700 transition-colors flex items-center"
-          >
-            <QrCodeIcon className="w-5 h-5 mr-2" />
-            Share QR Code
+                onClick={() => setViewMode('list')}
+                className={`px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+                  viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
+                }`}
+              >
+                List
           </button>
+            </div>
+
+            {/* Add Friend Button - Responsive sizing */}
           <button
-            onClick={() => router.push('/chats')}
-            className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center"
+              onClick={() => setShowAddFriend(true)}
+              className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center text-sm sm:text-base"
           >
-            <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" />
-            View Chats
+              <UserPlusIcon className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+              <span className="hidden xs:inline">Add Friend</span>
+              <span className="xs:hidden">Add</span>
           </button>
+          </div>
         </motion.div>
 
         {/* Add Friend Modal */}
@@ -276,249 +322,154 @@ export default function FriendsPage() {
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Friends List */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-2xl shadow-xl mb-8"
+          className="bg-white rounded-2xl shadow-lg p-6"
         >
-          <div className="flex border-b">
+          {filteredFriends.length === 0 ? (
+            <div className="text-center py-16">
+              <UserGroupIcon className="w-20 h-20 text-gray-300 mx-auto mb-6" />
+              <h3 className="text-2xl font-semibold text-gray-900 mb-3">
+                {searchQuery || filterStatus !== 'all' ? 'No friends found' : 'No friends yet'}
+              </h3>
+              <p className="text-gray-500 text-lg mb-8">
+                {searchQuery || filterStatus !== 'all' 
+                  ? 'Try adjusting your search or filters' 
+                  : 'Start building your network by adding friends!'}
+              </p>
+              {!searchQuery && filterStatus === 'all' && (
             <button
-              onClick={() => setActiveTab('friends')}
-              className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
-                activeTab === 'friends'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <UserGroupIcon className="w-5 h-5 inline mr-2" />
-              Friends ({friends.length})
+                  onClick={() => setShowAddFriend(true)}
+                  className="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center mx-auto"
+                >
+                  <UserPlusIcon className="w-5 h-5 mr-2" />
+                  Add Your First Friend
             </button>
-            <button
-              onClick={() => setActiveTab('requests')}
-              className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
-                activeTab === 'requests'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <ClockIcon className="w-5 h-5 inline mr-2" />
-              Requests ({friendRequests.incoming?.length || 0})
-            </button>
-          </div>
-
-          {/* Tab Content */}
-          <div className="p-6">
-            {activeTab === 'friends' ? (
-              <div>
-                {/* Search */}
-                <div className="mb-6">
-                  <div className="relative">
-                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search friends..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                {/* Friends List */}
-                {filteredFriends.length === 0 ? (
-                  <div className="text-center py-12">
-                    <UserGroupIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      {searchQuery ? 'No friends found' : 'No friends yet'}
-                    </h3>
-                    <p className="text-gray-500">
-                      {searchQuery ? 'Try adjusting your search' : 'Start by adding some friends!'}
-                    </p>
+              )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredFriends.map((friend) => (
+            <div className={viewMode === 'grid' 
+              ? "grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6" 
+              : "space-y-3 sm:space-y-4"
+            }>
+              {filteredFriends.map((friend, index) => (
                       <motion.div
                         key={friend._id}
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="relative">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                  transition={{ delay: index * 0.05 }}
+                  className={`bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 ${
+                    viewMode === 'list' ? 'p-3 sm:p-4' : 'p-4 sm:p-6'
+                  }`}
+                >
+                  {viewMode === 'grid' ? (
+                    // Grid View
+                    <div className="text-center">
+                      {/* Avatar */}
+                      <div className="relative inline-block mb-3 sm:mb-4">
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-lg sm:text-2xl font-bold overflow-hidden shadow-lg">
                               {friend.image ? (
                                 <img 
                                   src={friend.image} 
                                   alt={friend.name} 
-                                  className="w-12 h-12 rounded-full object-cover"
+                              className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
                                 />
                               ) : (
                                 friend.name.charAt(0).toUpperCase()
                               )}
                             </div>
-                            <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
+                        <div className={`absolute -bottom-1 -right-1 w-4 h-4 sm:w-6 sm:h-6 rounded-full border-2 sm:border-4 border-white shadow-lg ${
                               friend.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
                             }`}></div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-gray-900 truncate">{friend.name}</h4>
-                            <p className="text-sm text-gray-500">@{friend.handle}</p>
-                            <p className="text-xs text-gray-400">
+
+                      {/* Info */}
+                      <h4 className="font-semibold text-gray-900 text-base sm:text-lg mb-1 truncate">{friend.name}</h4>
+                      <p className="text-gray-500 text-xs sm:text-sm mb-2 truncate">@{friend.handle}</p>
+                      <p className={`text-xs px-2 sm:px-3 py-1 rounded-full inline-block mb-3 sm:mb-4 ${
+                        friend.status === 'online' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
                               {friend.status === 'online' ? 'Online' : `Last seen ${new Date(friend.lastSeen).toLocaleDateString()}`}
                             </p>
-                          </div>
-                          <div className="flex space-x-2">
+
+                      {/* Actions */}
+                      <div className="flex gap-2 justify-center">
                             <button
-                              onClick={() => router.push(`/chats?friend=${friend._id}`)}
-                              className="text-blue-500 hover:text-blue-700 transition-colors"
-                              title="Message friend"
+                          onClick={() => startChat(friend._id)}
+                          className="flex-1 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center"
                             >
-                              <ChatBubbleLeftRightIcon className="w-5 h-5" />
+                          <ChatBubbleLeftRightIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                          <span className="hidden sm:inline">Chat</span>
+                          <span className="sm:hidden">Msg</span>
                             </button>
                             <button
                               onClick={() => removeFriend(friend._id)}
-                              className="text-red-500 hover:text-red-700 transition-colors"
+                          className="bg-red-100 text-red-600 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-red-200 transition-colors"
                               title="Remove friend"
                             >
-                              <UserMinusIcon className="w-5 h-5" />
+                          <UserMinusIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           </div>
+                    </div>
+                  ) : (
+                    // List View
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
+                        <div className="relative flex-shrink-0">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm sm:text-lg font-bold overflow-hidden shadow-lg">
+                            {friend.image ? (
+                              <img 
+                                src={friend.image} 
+                                alt={friend.name} 
+                                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover"
+                                  />
+                                ) : (
+                              friend.name.charAt(0).toUpperCase()
+                                )}
+                              </div>
+                          <div className={`absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 rounded-full border-2 border-white shadow-sm ${
+                            friend.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                          }`}></div>
                         </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                {/* Incoming Friend Requests */}
-                <div className="mb-8">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Incoming Requests</h3>
-                  {friendRequests.incoming?.length === 0 ? (
-                    <div className="text-center py-8">
-                      <ClockIcon className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-gray-500">No incoming requests</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {friendRequests.incoming?.map((request) => (
-                        <motion.div
-                          key={request._id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                                {request.from.image ? (
-                                  <img 
-                                    src={request.from.image} 
-                                    alt={request.from.name} 
-                                    className="w-12 h-12 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  request.from.name.charAt(0).toUpperCase()
-                                )}
-                              </div>
-                              <div>
-                                <h4 className="font-medium text-gray-900">{request.from.name}</h4>
-                                <p className="text-sm text-gray-500">@{request.from.handle}</p>
-                                {request.message && (
-                                  <p className="text-sm text-gray-600 mt-1">&quot;{request.message}&quot;</p>
-                                )}
-                                <p className="text-xs text-gray-400">
-                                  {new Date(request.createdAt).toLocaleDateString()}
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-semibold text-gray-900 text-base sm:text-lg truncate">{friend.name}</h4>
+                          <p className="text-gray-500 text-sm truncate">@{friend.handle}</p>
+                          <p className={`text-xs px-2 py-1 rounded-full inline-block mt-1 ${
+                            friend.status === 'online' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {friend.status === 'online' ? 'Online' : `Last seen ${new Date(friend.lastSeen).toLocaleDateString()}`}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex space-x-2">
+                      <div className="flex items-center gap-2 sm:gap-3">
                               <button
-                                onClick={() => handleFriendRequest(request._id, 'accept')}
-                                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center"
+                          onClick={() => startChat(friend._id)}
+                          className="bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-blue-700 transition-colors flex items-center"
                               >
-                                <CheckIcon className="w-4 h-4 mr-1" />
-                                Accept
+                          <ChatBubbleLeftRightIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                          <span className="w-fit">Chat</span>
                               </button>
                               <button
-                                onClick={() => handleFriendRequest(request._id, 'reject')}
-                                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors flex items-center"
+                          onClick={() => removeFriend(friend._id)}
+                          className="bg-red-100 text-red-600 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-red-200 transition-colors"
+                          title="Remove friend"
                               >
-                                <XMarkIcon className="w-4 h-4 mr-1" />
-                                Reject
+                          <UserMinusIcon className="w-3 h-3 sm:w-4 sm:h-4" />
                               </button>
-
-                            </div>
                           </div>
+                    </div>
+                  )}
                         </motion.div>
                       ))}
                     </div>
                   )}
-                </div>
-
-                {/* Outgoing Friend Requests */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Outgoing Requests</h3>
-                  {friendRequests.outgoing?.length === 0 ? (
-                    <div className="text-center py-8">
-                      <ClockIcon className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-gray-500">No outgoing requests</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {friendRequests.outgoing?.map((request) => (
-                        <motion.div
-                          key={request._id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                                {request.to.image ? (
-                                  <img 
-                                    src={request.to.image} 
-                                    alt={request.to.name} 
-                                    className="w-12 h-12 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  request.to.name.charAt(0).toUpperCase()
-                                )}
-                              </div>
-                              <div>
-                                <h4 className="font-medium text-gray-900">{request.to.name}</h4>
-                                <p className="text-sm text-gray-500">@{request.to.handle}</p>
-                                {request.message && (
-                                  <p className="text-sm text-gray-600 mt-1">&quot;{request.message}&quot;</p>
-                                )}
-                                <p className="text-xs text-gray-400">
-                                  {new Date(request.createdAt).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex space-x-2">
-      
-                              <button
-                                onClick={() => cancelFriendRequest(request._id)}
-                                className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors flex items-center"
-                              >
-                                <XCircleIcon className="w-4 h-4 mr-1" />
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </motion.div>
       </div>
     </div>

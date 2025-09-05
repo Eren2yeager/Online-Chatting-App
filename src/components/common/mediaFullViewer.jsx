@@ -1,9 +1,11 @@
 "use client"
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState,  useEffect, useRef  } from 'react';
 import { useMediaFullView } from '@/components/layout/mediaFullViewContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DocumentIcon, PlayIcon, PhotoIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
-
+  import { HiOutlineDocumentText, HiOutlineSpeakerWave } from "react-icons/hi2";
+  import { HiOutlineDownload } from "react-icons/hi";
+  import { HiOutlinePlay } from "react-icons/hi2";
 // Helper to determine media type
 function getMediaType(media) {
   if (!media?.type && media?.url) {
@@ -54,27 +56,27 @@ const MediaGalleryDialog = ({ mediaArray, onSelect, onClose }) => (
               {type === 'image' ? (
                 <img
                   src={media.url}
-                  alt={media.name || `media-${idx}`}
+                  alt={media.filename || `media-${idx}`}
                   className="object-cover w-full h-full group-hover:scale-105 transition"
                 />
               ) : type === 'video' ? (
                 <div className="flex flex-col items-center justify-center h-full text-white">
                   <PlayIcon className="w-10 h-10 mb-2 opacity-80" />
-                  <span className="text-xs">{media.name || 'Video'}</span>
+                  <span className="text-xs">{media.filename || 'Video'}</span>
                 </div>
               ) : type === 'audio' ? (
                 <div className="flex flex-col items-center justify-center h-full text-white">
                   <SpeakerWaveIcon className="w-10 h-10 mb-2 opacity-80" />
-                  <span className="text-xs">{media.name || 'Audio'}</span>
+                  <span className="text-xs">{media.filename || 'Audio'}</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-white">
                   <DocumentIcon className="w-10 h-10 mb-2 opacity-80" />
-                  <span className="text-xs">{media.name || 'Document'}</span>
+                  <span className="text-xs">{media.filename || 'Document'}</span>
                 </div>
               )}
               <div className="absolute bottom-0 left-0 right-0 bg-black/40 text-xs text-white px-2 py-1 truncate">
-                {media.name || media.url?.split('/').pop()}
+                {media.filename || media.url?.split('/').pop()}
               </div>
             </button>
           );
@@ -84,90 +86,174 @@ const MediaGalleryDialog = ({ mediaArray, onSelect, onClose }) => (
   </motion.div>
 );
 
+
 const MediaFullDialog = ({ media, onClose, onPrev, onNext, hasPrev, hasNext }) => {
   const type = getMediaType(media);
+  const dialogRef = useRef(null);
+
+  // Keyboard navigation for left/right arrow keys
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "ArrowLeft" && hasPrev) {
+        e.preventDefault();
+        onPrev();
+      } else if (e.key === "ArrowRight" && hasNext) {
+        e.preventDefault();
+        onNext();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasPrev, hasNext, onPrev, onNext, onClose]);
+
   return (
     <motion.div
       className="fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-xl"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      // onClick={onClose} 
+      ref={dialogRef}
     >
       <motion.div
-        className="relative flex flex-col items-center bg-zinc-900/80 rounded-xl p-4 shadow-2xl max-w-[90vw] max-h-[90vh]"
+        className="relative flex flex-col items-stretch bg-zinc-900/90 rounded-xl shadow-2xl w-full max-w-3xl sm:max-w-4xl md:max-w-5xl max-h-[95vh] mx-2"
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         transition={{ type: "spring", stiffness: 260, damping: 20 }}
+        style={{
+          minHeight: "320px",
+          minWidth: "0",
+        }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 text-white bg-black/40 hover:bg-red-500 rounded-full px-3 py-1 font-bold text-lg transition"
+        {/* Close button row */}
+        <div className="flex items-center justify-end w-full px-2 sm:px-4 pt-3 pb-1">
+          <button
+            onClick={onClose}
+            className="flex items-center px-3 py-1 rounded-lg font-bold text-white bg-black/40 hover:bg-red-500 transition text-lg"
+            aria-label="Close"
+          >
+            × <span className="ml-1 text-base hidden sm:inline">Close</span>
+          </button>
+        </div>
+        {/* Filename bar */}
+        <div className="flex items-center justify-center w-full px-2 sm:px-4 pb-2">
+          <div className="flex-1 text-white text-xs sm:text-sm font-mono truncate text-center px-2">
+            {media.filename || media.url?.split('/').pop()}
+          </div>
+        </div>
+        {/* Main media area, always same height for stability */}
+        <div className="flex flex-1 items-center justify-center w-full min-h-[250px] max-h-[70vh] sm:max-h-[70vh] p-2 sm:p-4 relative"
+          style={{
+            minHeight: "250px",
+            maxHeight: "70vh",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
         >
-          ×
-        </button>
-        <div className="flex items-center justify-center w-full h-full min-h-[300px] min-w-[300px]">
           {type === 'image' && (
             <img
               src={media.url}
-              alt={media.name || 'Image'}
-              className="max-w-[80vw] max-h-[70vh] rounded-lg object-contain shadow-lg"
+              alt={media.filename || 'Image'}
+              className="max-h-full max-w-full w-auto h-auto rounded-lg object-contain shadow-lg mx-auto"
+              style={{
+                maxHeight: "60vh",
+                maxWidth: "100%",
+                width: "auto",
+                height: "auto",
+                display: "block",
+                margin: "0 auto",
+              }}
             />
           )}
           {type === 'video' && (
             <video
               src={media.url}
               controls
-              className="max-w-[80vw] max-h-[70vh] rounded-lg shadow-lg bg-black"
+              className="max-h-full max-w-full w-auto h-auto rounded-lg shadow-lg bg-black mx-auto"
+              style={{
+                maxHeight: "60vh",
+                maxWidth: "100%",
+                width: "auto",
+                height: "auto",
+                display: "block",
+                margin: "0 auto",
+              }}
             >
               Your browser does not support the video tag.
             </video>
           )}
           {type === 'audio' && (
-            <div className="flex flex-col items-center w-full">
+            <div className="flex flex-col justify-center items-center w-full">
+              <div className="flex flex-col items-center justify-center mb-4">
+                {/* HiOutlineSpeakerWave for audio icon */}
+                <HiOutlineSpeakerWave className="w-16 h-16 text-blue-400 mb-2" />
+                <div className="text-white text-lg font-semibold mb-1 text-center">
+                  {media.filename || media.url?.split('/').pop() || 'Audio'}
+                </div>
+              </div>
               <audio
                 src={media.url}
                 controls
-                className="w-full max-w-md"
+                className="w-full max-w-md rounded-lg bg-zinc-800"
+                style={{ background: "#18181b" }}
               >
                 Your browser does not support the audio element.
               </audio>
-              <div className="mt-2 text-white text-sm">{media.name || 'Audio'}</div>
             </div>
           )}
           {type === 'document' && (
             <div className="flex flex-col items-center w-full">
-              <DocumentIcon className="w-16 h-16 text-white mb-2" />
+              {/* HiOutlineDocumentText for document icon */}
+              <HiOutlineDocumentText className="w-20 h-20 text-purple-400 mb-3" />
+              <div className="text-white text-lg font-semibold mb-2 text-center break-all">
+                {media.filename || media.url?.split('/').pop() || 'Document'}
+              </div>
               <a
                 href={media.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-300 underline text-lg break-all"
-                download={media.name}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition mb-2"
+                download={media.filename}
               >
-                {media.name || media.url?.split('/').pop() || 'Document'}
+                <HiOutlineDownload className="w-5 h-5" />
+                Download
+              </a>
+              <a
+                href={media.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-300 underline text-sm break-all"
+              >
+                Open in new tab
               </a>
             </div>
           )}
         </div>
-        <div className="flex items-center justify-between w-full mt-4">
+        {/* Navigation and hint row */}
+        <div className="flex  sm:flex-row items-center justify-between w-full px-2 sm:px-4 py-2 gap-2 border-t border-zinc-800 bg-zinc-900/80">
           <button
             onClick={onPrev}
             disabled={!hasPrev}
-            className={`px-4 py-2 rounded-lg font-bold text-white bg-black/30 hover:bg-blue-500 transition ${!hasPrev ? 'opacity-30 cursor-not-allowed' : ''}`}
+            className={`flex items-center px-4 py-2 rounded-lg font-bold text-white bg-black/30 hover:bg-blue-500 transition ${!hasPrev ? 'opacity-30 cursor-not-allowed' : ''}`}
+            aria-label="Previous (Left Arrow)"
+            style={{ minWidth: 64 }}
           >
-            Prev
+            <span className="hidden sm:inline">&larr;&nbsp;</span>Prev
           </button>
-          <div className="text-white text-sm font-mono truncate w-full">
-            {media.name || media.url?.split('/').pop()}
+          <div className="text-xs text-gray-400 text-center flex-1 py-1">
+            <span>Use &larr; and &rarr; keys to navigate</span>
           </div>
           <button
             onClick={onNext}
             disabled={!hasNext}
-            className={`px-4 py-2 rounded-lg font-bold text-white bg-black/30 hover:bg-blue-500 transition ${!hasNext ? 'opacity-30 cursor-not-allowed' : ''}`}
+            className={`flex items-center px-4 py-2 rounded-lg font-bold text-white bg-black/30 hover:bg-blue-500 transition ${!hasNext ? 'opacity-30 cursor-not-allowed' : ''}`}
+            aria-label="Next (Right Arrow)"
+            style={{ minWidth: 64 }}
           >
-            Next
+            Next<span className="hidden sm:inline">&nbsp;&rarr;</span>
           </button>
         </div>
       </motion.div>

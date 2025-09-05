@@ -1,42 +1,69 @@
 /**
- * Returns a human‑friendly time stamp:
+ * WhatsApp-style date formatter, always showing the time:
  *   • < 5 s              → “just now”
- *   • < 60 s             → “xx seconds ago”
- *   • < 60 min           → “xx minutes ago”
- *   • < 24 h             → “xx hours ago”
- *   • < 7 days           → “xx days ago”
- *   • < 4 weeks          → “xx weeks ago”
- *   • otherwise          → “22 July, 2025”
+ *   • today              → “Today, hh:mm am/pm”
+ *   • yesterday          → “Yesterday, hh:mm am/pm”
+ *   • otherwise          → “1 Jan, yyyy, hh:mm am/pm”
  *
  * @param {string|number|Date} dateString – any value accepted by `new Date()`
  */
 function dateFormatter(dateString) {
-    const input = new Date(dateString);
-    const now   = new Date();
-    const diff  = now - input;                 // ms since the song was added
-    const secs  = Math.floor(diff / 1000);
-  
-    // “just now”  ───────────────────────────────────────────────
-    if (secs < 5) return "just now";
-  
-    // seconds / minutes / hours / days / weeks ─────────────────
-    const mins  = Math.floor(secs  / 60);
-    const hours = Math.floor(mins  / 60);
-    const days  = Math.floor(hours / 24);
-    const weeks = Math.floor(days  / 7);
-  
-    if (secs  < 60)  return `${secs} second${secs  === 1 ? "" : "s"} ago`;
-    if (mins  < 60)  return `${mins} minute${mins  === 1 ? "" : "s"} ago`;
-    if (hours < 24)  return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-    if (days  < 7)   return `${days} day${days   === 1 ? "" : "s"} ago`;
-    if (weeks < 4)   return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
-  
-    // Fallback to explicit calendar date ───────────────────────
-    return input.toLocaleDateString("en-GB", {
-      day:   "numeric",
-      month: "long",
-      year:  "numeric",
-    });
+  const input = new Date(dateString);
+  const now = new Date();
+
+  // Helper: pad to 2 digits
+  const pad = (n) => n.toString().padStart(2, "0");
+
+  // Helper: format time as "h:mm am/pm"
+  function formatTime(date) {
+    let hours = date.getHours();
+    const minutes = pad(date.getMinutes());
+    const ampm = hours >= 12 ? "pm" : "am";
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    return `${hours}:${minutes} ${ampm}`;
   }
-  
-  export default dateFormatter;
+
+  // Helper: is same day
+  function isSameDay(a, b) {
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
+  }
+
+  // Helper: is yesterday
+  function isYesterday(a, b) {
+    const yest = new Date(b);
+    yest.setDate(b.getDate() - 1);
+    return isSameDay(a, yest);
+  }
+
+  const diff = now - input;
+  const secs = Math.floor(diff / 1000);
+
+  if (secs < 5) return "just now";
+
+  if (isSameDay(input, now)) {
+    return `Today, ${formatTime(input)}`;
+  }
+
+  if (isYesterday(input, now)) {
+    return `Yesterday, ${formatTime(input)}`;
+  }
+
+  // Always show "1 Jan, yyyy, hh:mm am/pm" for older messages
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
+  const day = input.getDate();
+  const month = months[input.getMonth()];
+  const year = input.getFullYear();
+  const time = formatTime(input);
+
+  return `${day} ${month}, ${year}, ${time}`;
+}
+
+export default dateFormatter;

@@ -386,36 +386,7 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
           )}
         </div>
 
-        {/* Emoji Picker */}
-        {/* <div className="relative">
-          <button
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            disabled={disabled || uploading}
-            className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <FaceSmileIcon className="h-5 w-5" />
-          </button>
-
-          {showEmojiPicker && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="absolute bottom-full right-0 mb-2 z-10"
-            >
-              <Picker
-                onSelect={addEmoji}
-                theme="light"
-                set="apple"
-                showPreview={false}
-                showSkinTones={false}
-                emojiSize={20}
-                perLine={8}
-              />
-            </motion.div>
-          )}
-        </div> */}
-
+        
         {/* Send Button */}
         <button
           onClick={handleSend}

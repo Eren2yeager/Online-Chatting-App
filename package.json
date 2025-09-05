@@ -3,11 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:next\" \"npm run dev:socket\"",
-    "dev:next": "next dev",
-    "dev:socket": "node server/socket-server.js",
+    "dev": "node server/socket-server.js",
     "build": "next build",
-    "start": "concurrently \"next start\" \"node server/socket-server.js\"",
+    "start": "NODE_ENV=production node server/socket-server.js",
     "lint": "next lint"
   },
   "dependencies": {

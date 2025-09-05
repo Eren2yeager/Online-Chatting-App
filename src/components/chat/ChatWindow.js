@@ -1,17 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeftIcon,
-  EllipsisVerticalIcon,
-  PaperClipIcon,
-  EmojiHappyIcon,
-  PaperAirplaneIcon,
   UserGroupIcon,
   UserIcon,
-  ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 import {
   useSocket,
@@ -23,11 +18,13 @@ import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import MessageContextMenu from "./MessageContextMenu";
 import ManageGroupModal from "./ManageGroupModal";
+import ManageChatModal from "./ManageChatModal";
 import { useRouter } from "next/navigation";
 import {
   fetchMessages as apiFetchMessages,
   markChatRead,
 } from "../../lib/client/messages";
+
 /**
  * Chat window component for displaying and sending messages
  */
@@ -60,13 +57,65 @@ export default function ChatWindow({
   const typingUsers = useTypingIndicator(chat._id);
 
   const router = useRouter();
+
+  // --- Friendship and Block Logic ---
+  // Only applies to 1:1 chats
+  const isOneToOne = useMemo(() => !chat.isGroup && chat.participants?.length === 2, [chat]);
+  const currentUserId = session?.user?.id;
+
+  // Find the other participant (for 1:1)
+  const otherParticipant = useMemo(() => {
+    if (!isOneToOne) return null;
+    return chat.participants.find((p) => p._id !== currentUserId);
+  }, [chat, isOneToOne, currentUserId]);
+
+  // State for friends and blocked users
+  const [friends, setFriends] = useState([]);
+  const [blocked, setBlocked] = useState([]);
+
+  // Fetch friends and blocked users from API
+  useEffect(() => {
+    if (!isOneToOne || !session?.user) return;
+
+    // Fetch friends
+    fetch('/api/users/friends')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setFriends(data.data || []);
+      })
+      .catch(() => setFriends([]));
+
+    // Fetch blocked users
+    fetch('/api/users/block')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setBlocked(data.data || []);
+      })
+      .catch(() => setBlocked([]));
+  }, [isOneToOne, session?.user?.id]);
+
+  // Check if current user is friends with the other participant
+  const isFriend = useMemo(() => {
+    if (!isOneToOne || !otherParticipant) return true; // allow in group or if not loaded
+    // Both must have each other in their friends list
+    // Our friends list is from API, otherParticipant.friends may not be up-to-date, so just check if otherParticipant is in our friends
+    return friends.some((f) => f._id === otherParticipant._id);
+  }, [isOneToOne, otherParticipant, friends]);
+
+  // Check if either user has blocked the other
+  const isBlocked = useMemo(() => {
+    if (!isOneToOne || !otherParticipant) return false;
+    // Our blocked list is from API, otherParticipant.blocked may not be up-to-date, so just check if otherParticipant is in our blocked
+    return blocked.some((b) => b._id === otherParticipant._id);
+  }, [isOneToOne, otherParticipant, blocked]);
+
   // Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    // scrollToBottom();
     // Mark chat read whenever messages change
     if (messages.length > 0) {
       const lastId = messages[messages.length - 1]?._id;
@@ -82,6 +131,11 @@ export default function ChatWindow({
   }, [chat._id]);
 
   // Socket event listeners
+  // useSocketListener is a custom React hook that subscribes to a socket event ("message:new" here)
+  // and runs the callback whenever the server emits that event to this client.
+  // In contrast, emit is used to send (emit) an event from the client to the server.
+  // So: emit = client → server, useSocketListener = server → client.
+
   useSocketListener("message:new", (data) => {
     if (data.chatId === chat._id) {
       setMessages((prev) => [...prev, data.message]);
@@ -97,11 +151,10 @@ export default function ChatWindow({
     }
   });
 
+
   useSocketListener("message:delete", (data) => {
-    console.log("Received message:delete event:", data);
     if (data.chatId === chat._id) {
       if (data.deleteForEveryone) {
-        console.log("Deleting message for everyone:", data.messageId);
         setMessages((prev) =>
           prev.map((msg) =>
             msg._id === data.messageId
@@ -110,7 +163,6 @@ export default function ChatWindow({
           )
         );
       } else {
-        console.log("Deleting message for user:", data.messageId);
         setMessages((prev) => prev.filter((msg) => msg._id !== data.messageId));
       }
     }
@@ -125,6 +177,21 @@ export default function ChatWindow({
             : msg
         )
       );
+    }
+  });
+
+  // Listen for admin promotion and demotion events from the socket server
+  useSocketListener("admin:promoted", (data) => {
+    if (data.chatId === chat._id && data.chat) {
+      // Update chat info (admins, participants, etc.) in parent if callback provided
+      onChatUpdated?.(data.chat);
+    }
+  });
+
+  useSocketListener("admin:demoted", (data) => {
+    if (data.chatId === chat._id && data.chat) {
+      // Update chat info (admins, participants, etc.) in parent if callback provided
+      onChatUpdated?.(data.chat);
     }
   });
 
@@ -149,6 +216,37 @@ export default function ChatWindow({
     }
   };
 
+
+  // Promote a user to admin in a group chat
+  const handlePromoteAdmin = async (userId) => {
+    if (!chat?._id || !userId) return;
+    if (!isCreator) {
+      // Only the creator can promote admins
+      return;
+    }
+    try {
+      emit("admin:promote", { chatId: chat._id, userId });
+    } catch (error) {
+      console.error("Error promoting admin:", error);
+    }
+  };
+
+  // Demote an admin in a group chat
+  const handleDemoteAdmin = async (userId) => {
+    if (!chat?._id || !userId) return;
+    if (!isCreator) {
+      // Only the creator can demote admins
+      return;
+    }
+    try {
+      emit("admin:demote", { chatId: chat._id, userId });
+    } catch (error) {
+      console.error("Error demoting admin:", error);
+    }
+  };
+
+
+  
   const handleSendMessage = async (text, media = [], replyToId = null) => {
     if (!text.trim() && media.length === 0) return;
 
@@ -177,14 +275,6 @@ export default function ChatWindow({
   };
 
   const handleMessageAction = (action, message) => {
-    console.log(
-      "Handling message action:",
-      action,
-      message._id,
-      "Socket connected:",
-      isConnected
-    );
-
     if (!isConnected) {
       console.error("Socket not connected, cannot perform action:", action);
       return;
@@ -203,14 +293,12 @@ export default function ChatWindow({
         }
         break;
       case "delete":
-        console.log("Emitting delete for message:", message._id);
         emit("message:delete", {
           messageId: message._id,
           deleteForEveryone: false,
         });
         break;
       case "deleteForEveryone":
-        console.log("Emitting deleteForEveryone for message:", message._id);
         emit("message:delete", {
           messageId: message._id,
           deleteForEveryone: true,
@@ -271,6 +359,18 @@ export default function ChatWindow({
     }
   };
 
+  // --- UI for friendship/block restriction ---
+  let chatInputRestrictionMessage = null;
+  if (isOneToOne) {
+    if (isBlocked) {
+      chatInputRestrictionMessage =
+        "You cannot send messages because you have blocked this user or they have blocked you.";
+    } else if (!isFriend) {
+      chatInputRestrictionMessage =
+        "You can only chat with users who are your friends. Add this user as a friend to start chatting.";
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
@@ -286,11 +386,7 @@ export default function ChatWindow({
           <div
             className="flex items-center space-x-3 cursor-pointer"
             onClick={() => {
-              if (chat.isGroup) {
                 setShowManageGroup(true);
-              } else {
-                router.push(`/profile/${getOtherParticipantHandle()}`);
-              }
             }}
           >
             <div className="relative h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center ">
@@ -327,43 +423,6 @@ export default function ChatWindow({
             </div>
           </div>
         </div>
-
-        {/* <div className="relative">
-          {chat.isGroup && isAdmin && (
-            <button
-              className="p-2 rounded-lg hover:bg-gray-100"
-              onClick={() => setShowActions((v) => !v)}
-            >
-              <EllipsisVerticalIcon className="h-5 w-5 text-gray-600" />
-            </button>
-          )}
-          <AnimatePresence>
-            {showActions && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-10"
-                tabIndex={0}
-                onBlur={() => setShowActions(false)}
-                onFocus={() => {}} // to ensure tabIndex works for focus/blur
-                autoFocus
-              >
-                {chat.isGroup && isAdmin && (
-                  <button
-                    onClick={() => {
-                      setShowActions(false);
-                      setShowManageGroup(true);
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                  >
-                    ⚙️ Manage Group
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div> */}
       </div>
 
       {/* Messages */}
@@ -412,20 +471,26 @@ export default function ChatWindow({
         )}
       </div>
 
-      {/* Input */}
+      {/* Input or Restriction Message */}
       <div
         className="border-t border-gray-200 rounded-t-lg p-2 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)]"
         onContextMenu={() => setShowContextMenu(false)}
       >
-        <ChatInput
-          onSendMessage={handleSendMessage}
-          disabled={!isConnected}
-          chatId={chat._id}
-          replyToMessage={replyToMessage}
-          onCancelReply={() => setReplyToMessage(null)}
-          editMessage={editMessage}
-          onCancelEdit={() => setEditMessage(null)}
-        />
+        {chatInputRestrictionMessage ? (
+          <div className="text-center text-sm text-gray-500 py-4">
+            {chatInputRestrictionMessage}
+          </div>
+        ) : (
+          <ChatInput
+            onSendMessage={handleSendMessage}
+            disabled={!isConnected}
+            chatId={chat._id}
+            replyToMessage={replyToMessage}
+            onCancelReply={() => setReplyToMessage(null)}
+            editMessage={editMessage}
+            onCancelEdit={() => setEditMessage(null)}
+          />
+        )}
       </div>
 
       {/* Context Menu */}
@@ -438,26 +503,15 @@ export default function ChatWindow({
         isOwnMessage={contextMenuMessage?.sender._id === session?.user?.id}
       />
 
-      {/* Manage Members Modal */}
-      {/* {chat.isGroup && (
-        <ManageMembersModal
-          isOpen={showManageMembers}
-          onClose={() => setShowManageMembers(false)}
-          chat={chat}
-          onUpdated={(updatedChat) => {
-            setShowManageMembers(false);
-            onChatUpdated?.(updatedChat);
-          }}
-        />
-      )} */}
-
-      {chat.isGroup && (
-        <ManageGroupModal
+      {(
+        <ManageChatModal
           isOpen={showManageGroup}
           onClose={() => setShowManageGroup(false)}
           chat={chat}
           isCreator={isCreator}
           isAdmin={isAdmin}
+          handlePromoteAdmin ={handlePromoteAdmin}
+          handleDemoteAdmin = {handleDemoteAdmin}
           onUpdated={(updatedChat) => {
             setShowManageGroup(false);
             onChatUpdated?.(updatedChat);

@@ -17,7 +17,6 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import CreateGroupModal from '../chat/CreateGroupModal';
-
 export default function Navigation() {
   const { data: session } = useSession();
   const router = useRouter();
@@ -46,7 +45,7 @@ export default function Navigation() {
   const navigationItems = [
     { name: 'Chats', href: '/chats', icon: ChatBubbleLeftRightIcon },
     { name: 'Friends', href: '/friends', icon: UserGroupIcon },
-    { name: 'Profile', href: '/profile', icon: UserIcon },
+    { name: 'Profile', href: `/profile/${session.user.handle}`, icon: UserIcon },
   ];
 
   const isActive = (href) => pathname === href;

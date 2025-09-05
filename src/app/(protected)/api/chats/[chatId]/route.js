@@ -91,15 +91,6 @@ export async function GET(request, { params }) {
  */
 export async function PATCH(request, { params }) {
   try {
-    // Rate limiting
-    // const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
-    // if (!rateLimitResult.success) {
-    //   return Response.json(
-    //     { success: false, error: 'Rate limit exceeded' },
-    //     { status: 429 }
-    //   );
-    // }
-
     // Authentication check
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -109,17 +100,8 @@ export async function PATCH(request, { params }) {
       );
     }
 
-    // Validate request body
-    // const validation = await validateRequest(request, chatUpdateSchema);
-    // if (!validation.success) {
-    //   return Response.json(
-    //     { success: false, error: validation.error },
-    //     { status: 400 }
-    //   );
-    // }
-
     const { chatId } = params;
-    const { name, image } = await request.json();
+    const { name, description, image, privacy } = await request.json();
 
     // Connect to database
     await connectDB();
@@ -158,10 +140,12 @@ export async function PATCH(request, { params }) {
       }
     }
 
-    // Update chat
+    // Update chat with all possible fields
     const updateData = {};
     if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
     if (image !== undefined) updateData.avatar = image;
+    if (privacy !== undefined) updateData.privacy = privacy;
 
     const updatedChat = await Chat.findByIdAndUpdate(
       chatId,
