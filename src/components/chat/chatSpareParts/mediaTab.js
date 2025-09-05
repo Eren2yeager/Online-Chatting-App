@@ -33,7 +33,7 @@ export default function MediaTab({ mediaFiles, onMediaClick }) {
           No media shared yet
         </h3>
         <p className="text-gray-500">
-          When group members share photos, videos, audio, or files, they'll appear here.
+          When group members share photos, videos, audio, or files, they&apos;ll appear here.
         </p>
       </div>
     );
