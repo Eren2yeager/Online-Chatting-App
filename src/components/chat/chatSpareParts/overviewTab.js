@@ -2,9 +2,10 @@
 
 import { PhotoIcon, CalendarIcon, UserGroupIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
+
 export default function OverviewTab({
   chat,
-  groupStats,
+  groupStats = {},
   editForm,
   setEditForm,
   imageFile,
@@ -21,6 +22,7 @@ export default function OverviewTab({
   otherUser,
 }) {
   const router = useRouter();
+
   // 1:1 Chat: Professional, detailed profile card
   if (!isGroup && otherUser) {
     return (
@@ -29,10 +31,12 @@ export default function OverviewTab({
           <div className="relative mb-6">
             <div className="h-32 w-32 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center border-4 border-blue-200 shadow">
               {otherUser.image ? (
-                <img
-                  src={otherUser.image}
-                  alt={otherUser.name || "User"}
-                  className="h-full w-full object-cover"
+                <div
+                  className="h-full w-full rounded-full object-cover bg-center bg-cover"
+                  style={{
+                    backgroundImage: `url('${otherUser.image}')`,
+                  }}
+                  aria-label={otherUser.name || "User"}
                 />
               ) : (
                 <span className="text-4xl text-gray-400 font-bold">
@@ -103,10 +107,12 @@ export default function OverviewTab({
         <div className="flex flex-col items-center mb-8">
           <div className="relative flex items-center justify-center w-40 h-40 mb-2">
             {editForm.image ? (
-              <img
-                src={editForm.image}
-                alt="Group"
-                className="w-40 h-40 rounded-full object-cover border-4 border-blue-200 shadow"
+              <div
+                className="w-40 h-40 rounded-full object-cover border-4 border-blue-200 shadow bg-center bg-cover"
+                style={{
+                  backgroundImage: `url('${editForm.image}')`,
+                }}
+                aria-label="Group"
               />
             ) : (
               <div className="w-40 h-40 rounded-full bg-gray-100 flex items-center justify-center border-4 border-blue-100 shadow">

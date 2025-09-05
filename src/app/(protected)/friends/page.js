@@ -17,10 +17,14 @@ import {
   FunnelIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { useSocketEmit } from '@/lib/socket';
+import { useSocket } from '@/lib/socket';
 
 export default function FriendsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { emitAck } = useSocketEmit();
+  const { socket } = useSocket();
   const [friends, setFriends] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -44,6 +48,41 @@ export default function FriendsPage() {
     }
   }, [session]);
 
+  // Live updates from socket events
+  useEffect(() => {
+    if (!socket) return;
+
+    const refresh = () => fetchFriendsData();
+
+    const onAccepted = ({ from, to }) => {
+      // Either side being current user should refresh friends
+      if (session?.user?.id && (from === session.user.id || to === session.user.id)) {
+        refresh();
+      }
+    };
+    const onRemoved = ({ userId }) => {
+      if (session?.user?.id && userId === session.user.id) {
+        refresh();
+      } else {
+        refresh();
+      }
+    };
+    const onCancelled = refresh;
+    const onRejected = refresh;
+
+    socket.on('friend:request:accepted', onAccepted);
+    socket.on('friend:removed', onRemoved);
+    socket.on('friend:request:cancelled', onCancelled);
+    socket.on('friend:request:rejected', onRejected);
+
+    return () => {
+      socket.off('friend:request:accepted', onAccepted);
+      socket.off('friend:removed', onRemoved);
+      socket.off('friend:request:cancelled', onCancelled);
+      socket.off('friend:request:rejected', onRejected);
+    };
+  }, [socket, session?.user?.id]);
+
   const fetchFriendsData = async () => {
     try {
       const friendsRes = await fetch('/api/users/friends');
@@ -63,23 +102,15 @@ export default function FriendsPage() {
   const handleAddFriend = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/friends/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(addFriendForm)
-      });
-
-      if (response.ok) {
+      const res = await emitAck('friend:request:create', addFriendForm);
+      if (res?.success) {
         toast.success('Friend request sent successfully!');
         setAddFriendForm({ handle: '', message: '' });
         setShowAddFriend(false);
-        fetchFriendsData(); // Refresh data
       } else {
-        const error = await response.json();
-        toast.error(error.message || 'Failed to send friend request');
+        toast.error(res?.error || 'Failed to send friend request');
       }
-    } catch (error) {
-      console.error('Error sending friend request:', error);
+    } catch {
       toast.error('Failed to send friend request');
     }
   };
@@ -134,20 +165,15 @@ export default function FriendsPage() {
 
   const removeFriend = async (friendId) => {
     if (!confirm('Are you sure you want to remove this friend?')) return;
-
     try {
-      const response = await fetch(`/api/users/friends/${friendId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
+      const res = await emitAck('friend:remove', { friendId });
+      if (res?.success) {
         toast.success('Friend removed successfully');
-        fetchFriendsData(); // Refresh data
+        fetchFriendsData();
       } else {
-        toast.error('Failed to remove friend');
+        toast.error(res?.error || 'Failed to remove friend');
       }
-    } catch (error) {
-      console.error('Error removing friend:', error);
+    } catch {
       toast.error('Failed to remove friend');
     }
   };

@@ -43,6 +43,15 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
     }
   }, [typing, emit, chatId]);
 
+  // Cleanup typing timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Edit mode
   useEffect(() => {
     if (editMessage) {
@@ -107,7 +116,13 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
       // Reset state
       setMessage("");
       setSelectedFiles([]);
+      
+      // Clear typing timeout and stop typing
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
       setTyping(false);
+      
       onCancelReply?.();
       onCancelEdit?.();
     } catch (error) {

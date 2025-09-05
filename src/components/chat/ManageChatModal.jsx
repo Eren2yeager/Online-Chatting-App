@@ -17,6 +17,7 @@ import MembersTab from "./chatSpareParts/membersTab";
 import MediaTab from "./chatSpareParts/mediaTab";
 import LinksTab from "./chatSpareParts/linksTab";
 import { useSession } from 'next-auth/react';
+import { useSocketEmit } from '@/lib/socket';
 
 export default function ManageChatModal({
   isOpen,
@@ -50,6 +51,7 @@ export default function ManageChatModal({
   const showToast = useToast?.() || (() => {});
   const { setMediaToView } = useMediaFullView();
   const { data: session } = useSession();
+  const { emitAck } = useSocketEmit();
 
   const stats = useMemo(() => ({
     totalMembers: participants.length,
@@ -181,16 +183,11 @@ export default function ManageChatModal({
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`/api/chats/${chat._id}/members`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const res = await emitAck("chat:member:remove", { chatId: chat._id, userId });
+      if (res?.success) {
         showToast({ text: "Member removed" });
-        onUpdated?.(data.data);
-      } else setError(data.error || "Failed to remove member");
+        onUpdated?.(res.chat);
+      } else setError(res?.error || "Failed to remove member");
     } catch {
       setError("Failed to remove member");
     } finally {
@@ -208,16 +205,11 @@ export default function ManageChatModal({
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`/api/chats/${chat._id}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userIds }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const res = await emitAck("chat:member:add", { chatId: chat._id, userIds });
+      if (res?.success) {
         showToast({ text: "Members added" });
-        onUpdated?.(data.data);
-      } else setError(data.error || "Failed to add members");
+        onUpdated?.(res.chat);
+      } else setError(res?.error || "Failed to add members");
     } catch {
       setError("Failed to add members");
     } finally {
@@ -234,15 +226,13 @@ export default function ManageChatModal({
     if (!confirm("Are you sure you want to leave this group?")) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/chats/${chat._id}/members`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId : session.user.id }),
-      });
-      if (res.ok) {
+      const res = await emitAck("chat:member:remove", { chatId: chat._id, userId: session.user.id });
+      if (res?.success) {
         showToast({ text: "Left the group" });
         onClose();
         window.location.href = "/chats";
+      } else {
+        showToast({ text: res?.error || "Failed to leave group" });
       }
     } catch (error) {
       showToast({ text: "Failed to leave group" });

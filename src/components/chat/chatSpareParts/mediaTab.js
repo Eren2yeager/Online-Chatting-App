@@ -57,11 +57,16 @@ export default function MediaTab({ mediaFiles, onMediaClick }) {
                 className="group relative aspect-square rounded-lg overflow-hidden bg-gray-100 hover:ring-2 hover:ring-blue-400 transition-all"
                 title={media.filename || `Image ${idx + 1}`}
               >
-                <img
-                  src={media.url}
-                  alt={media.filename || `image-${idx}`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                />
+                <div className="w-full h-full relative flex items-center justify-center bg-gray-200">
+                  {/* Use native img tag instead of next/image */}
+                  <img
+                    src={media.url}
+                    alt={media.filename || `image-${idx}`}
+                    className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+                    style={{ objectFit: "cover", width: "100%", height: "100%" }}
+                    loading="lazy"
+                  />
+                </div>
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                 <div className="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-xs px-2 py-1 truncate">
                   {media.filename || `Image`}
@@ -87,11 +92,15 @@ export default function MediaTab({ mediaFiles, onMediaClick }) {
                 title={media.filename || `Video ${idx + 1}`}
               >
                 {media.thumbnailUrl ? (
-                  <img
-                    src={media.thumbnailUrl}
-                    alt={media.filename || `video-${idx}`}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                  />
+                  <div className="w-full h-full relative flex items-center justify-center bg-gray-200">
+                    <img
+                      src={media.thumbnailUrl}
+                      alt={media.filename || `video-${idx}`}
+                      className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+                      style={{ objectFit: "cover", width: "100%", height: "100%" }}
+                      loading="lazy"
+                    />
+                  </div>
                 ) : (
                   <div className="w-full h-full bg-gray-800 flex items-center justify-center">
                     <PlayIcon className="w-10 h-10 text-white opacity-80" />

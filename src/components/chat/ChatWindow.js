@@ -19,6 +19,7 @@ import ChatInput from "./ChatInput";
 import MessageContextMenu from "./MessageContextMenu";
 import ManageGroupModal from "./ManageGroupModal";
 import ManageChatModal from "./ManageChatModal";
+import TypingIndicator from "./TypingIndicator";
 import { useRouter } from "next/navigation";
 import {
   fetchMessages as apiFetchMessages,
@@ -36,7 +37,7 @@ export default function ChatWindow({
 }) {
   const { data: session } = useSession();
   const { socket, isConnected } = useSocket();
-  const { emit } = useSocketEmit();
+  const { emit, emitAck } = useSocketEmit();
   const messagesEndRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -195,6 +196,21 @@ export default function ChatWindow({
     }
   });
 
+  // Listen for chat updates (member add/remove)
+  useSocketListener("chat:updated", (data) => {
+    if (data.chat._id === chat._id) {
+      onChatUpdated?.(data.chat);
+    }
+  });
+
+  // Listen for chat left event (when user leaves group)
+  useSocketListener("chat:left", (data) => {
+    if (data.chatId === chat._id) {
+      // Redirect to chats page if current user left
+      router.push("/chats");
+    }
+  });
+
   const fetchMessages = async (beforeId = null) => {
     try {
       setLoading(true);
@@ -253,28 +269,36 @@ export default function ChatWindow({
     try {
       if (editMessage) {
         // Handle edit mode
-        emit("message:edit", {
+        const res = await emitAck("message:edit", {
           messageId: editMessage._id,
           text: text.trim(),
           media,
         });
-        setEditMessage(null);
+        if (res?.success) {
+          setEditMessage(null);
+        } else {
+          console.error("Failed to edit message:", res?.error);
+        }
       } else {
         // Handle new message
-        emit("message:new", {
+        const res = await emitAck("message:new", {
           chatId: chat._id,
           text: text.trim(),
           media,
           replyTo: replyToId || undefined,
         });
-        if (replyToMessage) setReplyToMessage(null);
+        if (res?.success) {
+          if (replyToMessage) setReplyToMessage(null);
+        } else {
+          console.error("Failed to send message:", res?.error);
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error);
     }
   };
 
-  const handleMessageAction = (action, message) => {
+  const handleMessageAction = async (action, message) => {
     if (!isConnected) {
       console.error("Socket not connected, cannot perform action:", action);
       return;
@@ -293,16 +317,30 @@ export default function ChatWindow({
         }
         break;
       case "delete":
-        emit("message:delete", {
-          messageId: message._id,
-          deleteForEveryone: false,
-        });
+        try {
+          const res = await emitAck("message:delete", {
+            messageId: message._id,
+            deleteForEveryone: false,
+          });
+          if (!res?.success) {
+            console.error("Failed to delete message:", res?.error);
+          }
+        } catch (error) {
+          console.error("Error deleting message:", error);
+        }
         break;
       case "deleteForEveryone":
-        emit("message:delete", {
-          messageId: message._id,
-          deleteForEveryone: true,
-        });
+        try {
+          const res = await emitAck("message:delete", {
+            messageId: message._id,
+            deleteForEveryone: true,
+          });
+          if (!res?.success) {
+            console.error("Failed to delete message for everyone:", res?.error);
+          }
+        } catch (error) {
+          console.error("Error deleting message for everyone:", error);
+        }
         break;
       case "reply":
         setReplyToMessage(message);
@@ -467,6 +505,9 @@ export default function ChatWindow({
             </AnimatePresence>
 
             <div ref={messagesEndRef} />
+            
+            {/* Typing Indicator */}
+            <TypingIndicator typingUsers={typingUsers} />
           </>
         )}
       </div>

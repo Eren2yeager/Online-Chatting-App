@@ -25,6 +25,8 @@ import {
 
 import { QRCodeSVG } from "qrcode.react";
 import toast from "react-hot-toast";
+import { useSocketEmit } from "@/lib/socket";
+import { useSocket } from "@/lib/socket";
 
 function dateFormatter(date) {
   if (!date) return "";
@@ -49,6 +51,8 @@ const RELATIONSHIP = {
 };
 
 export default function ProfileByHandlePage() {
+  const { emitAck } = useSocketEmit();
+  const { socket } = useSocket();
   const params = useParams();
   const router = useRouter();
   const { handle } = params;
@@ -131,6 +135,35 @@ export default function ProfileByHandlePage() {
     // eslint-disable-next-line
   }, [user, currentUser]);
 
+  // Live relationship updates from socket events
+  useEffect(() => {
+    if (!socket || !user || !currentUser) return;
+
+    const resync = () => checkExistingRelationship(user._id);
+
+    const onAccepted = ({ from, to }) => {
+      if ([from, to].includes(currentUser._id)) resync();
+    };
+    const onCancelled = resync;
+    const onRejected = resync;
+    const onRemoved = ({ userId }) => {
+      // If other user removed me or I removed them
+      resync();
+    };
+
+    socket.on('friend:request:accepted', onAccepted);
+    socket.on('friend:request:cancelled', onCancelled);
+    socket.on('friend:request:rejected', onRejected);
+    socket.on('friend:removed', onRemoved);
+
+    return () => {
+      socket.off('friend:request:accepted', onAccepted);
+      socket.off('friend:request:cancelled', onCancelled);
+      socket.off('friend:request:rejected', onRejected);
+      socket.off('friend:removed', onRemoved);
+    };
+  }, [socket, user?._id, currentUser?._id]);
+
   // Check relationship between current user and target user
   const checkExistingRelationship = async (targetUserId) => {
     // Check block status first
@@ -208,19 +241,14 @@ export default function ProfileByHandlePage() {
   // Friend request actions
   const sendFriendRequest = async () => {
     try {
-      const res = await fetch(`/api/friends/requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ handle }),
-      });
-      const data = await res.json();
-      if (res.ok && data) {
+      const res = await emitAck("friend:request:create", { handle });
+      if (res?.success) {
         toast.success("Friend request sent");
         setRelationship(RELATIONSHIP.OUTGOING);
-        setPendingRequestId(data._id || null);
+        setPendingRequestId(res?.request?._id || null);
         await checkExistingRelationship(user._id);
       } else {
-        toast.error(data?.error || "Failed to send request");
+        toast.error(res?.error || "Failed to send request");
       }
     } catch {
       toast.error("Failed to send request");
@@ -230,21 +258,15 @@ export default function ProfileByHandlePage() {
   const cancelFriendRequest = async () => {
     if (!pendingRequestId) return;
     try {
-      const res = await fetch(`/api/friends/requests/${pendingRequestId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      });
-      const data = await res.json();
-      // The API returns { message: "..."} on success, not { success: true }
-      if (res.ok && data && data.message) {
+      const res = await emitAck("friend:request:action", { requestId: pendingRequestId, action: "cancel" });
+      if (res?.success) {
         toast.success("Friend request cancelled");
         setRelationship(RELATIONSHIP.NONE);
         setPendingRequestId(null);
         // Re-check relationship to ensure UI is in sync with backend
         await checkExistingRelationship(user._id);
       } else {
-        toast.error(data?.error || "Failed to cancel request");
+        toast.error(res?.error || "Failed to cancel request");
       }
     } catch {
       toast.error("Failed to cancel request");
@@ -254,14 +276,8 @@ export default function ProfileByHandlePage() {
   const acceptFriendRequest = async () => {
     if (!pendingRequestId) return;
     try {
-      const res = await fetch(`/api/friends/requests/${pendingRequestId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "accept" }),
-      });
-      const data = await res.json();
-      // The API returns { message: "..."} on success
-      if (res.ok && data && data.message) {
+      const res = await emitAck("friend:request:action", { requestId: pendingRequestId, action: "accept" });
+      if (res?.success) {
         toast.success("Friend request accepted");
 
         setRelationship(RELATIONSHIP.FRIEND);
@@ -269,7 +285,7 @@ export default function ProfileByHandlePage() {
         // Re-check relationship to ensure UI is in sync with backend
 
       } else {
-        toast.error(data?.error || "Failed to accept request");
+        toast.error(res?.error || "Failed to accept request");
       }
     } catch {
       toast.error("Failed to accept request");
@@ -279,21 +295,15 @@ export default function ProfileByHandlePage() {
   const rejectFriendRequest = async () => {
     if (!pendingRequestId) return;
     try {
-      const res = await fetch(`/api/friends/requests/${pendingRequestId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reject" }),
-      });
-      const data = await res.json();
-      // The API returns the updated request object on success
-      if (res.ok && data && data.status === "rejected") {
+      const res = await emitAck("friend:request:action", { requestId: pendingRequestId, action: "reject" });
+      if (res?.success) {
         toast.success("Friend request rejected");
         setRelationship(RELATIONSHIP.NONE);
         setPendingRequestId(null);
         // Re-check relationship to ensure UI is in sync with backend
         await checkExistingRelationship(user._id);
       } else {
-        toast.error(data?.error || "Failed to reject request");
+        toast.error(res?.error || "Failed to reject request");
       }
     } catch {
       toast.error("Failed to reject request");
@@ -303,14 +313,12 @@ export default function ProfileByHandlePage() {
   const removeFriend = async (friendId) => {
     if (!confirm("Are you sure you want to remove this friend?")) return;
     try {
-      const response = await fetch(`/api/users/friends/${friendId}`, {
-        method: "DELETE",
-      });
-      if (response.ok) {
+      const res = await emitAck("friend:remove", { friendId });
+      if (res?.success) {
         toast.success("Friend removed successfully");
         setRelationship(RELATIONSHIP.NONE);
       } else {
-        toast.error("Failed to remove friend");
+        toast.error(res?.error || "Failed to remove friend");
       }
     } catch (error) {
       console.error("Error removing friend:", error);

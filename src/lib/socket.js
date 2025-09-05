@@ -117,7 +117,25 @@ export function useSocketEmit() {
     }
   };
 
-  return { emit, isConnected };
+  const emitAck = (event, data) => {
+    return new Promise((resolve) => {
+      if (!socket || !isConnected) {
+        console.warn('Socket not connected, cannot emitAck event:', event);
+        resolve({ success: false, error: 'not_connected' });
+        return;
+      }
+      try {
+        socket.emit(event, data, (response) => {
+          resolve(response);
+        });
+      } catch (error) {
+        console.error('Error emitting socket event with ack:', error);
+        resolve({ success: false, error: 'emit_failed' });
+      }
+    });
+  };
+
+  return { emit, emitAck, isConnected };
 }
 
 /**

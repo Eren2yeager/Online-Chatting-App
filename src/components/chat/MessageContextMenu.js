@@ -26,7 +26,7 @@ export default function MessageContextMenu({
   isOwnMessage
 }) {
   const menuRef = useRef(null);
-  const { emit } = useSocketEmit();
+  const { emit, emitAck } = useSocketEmit();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   useEffect(() => {

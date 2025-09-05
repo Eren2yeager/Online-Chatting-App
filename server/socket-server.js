@@ -166,14 +166,15 @@ io.on("connection", async (socket) => {
     socket.to(`chat:${chatId}`).emit("typing:stop", {
       chatId,
       userId: socket.userId,
+      userName: socket.user.name,
     });
   });
 
   // Handle new message
-  socket.on("message:new", async (data) => {
+  socket.on("message:new", async (data, ack) => {
     try {
       const { chatId, text, media, replyTo } = data;
-      if (!chatId) return;
+      if (!chatId) return ack && ack({ success: false, error: "chatId is required" });
 
       // Create message in database
       const message = await Message.create({
@@ -242,9 +243,11 @@ io.on("connection", async (socket) => {
           fromUser: socket.userId,
         });
       }
+
+      return ack && ack({ success: true, message });
     } catch (error) {
       console.error("Error handling new message:", error);
-      socket.emit("error", { message: "Failed to send message" });
+      return ack && ack({ success: false, error: "Failed to send message" });
     }
   });
 
@@ -429,6 +432,276 @@ io.on("connection", async (socket) => {
     }
   });
 
+  // Friend request lifecycle via sockets
+  socket.on("friend:request:create", async (data, ack) => {
+    try {
+      const { handle, message } = data || {};
+      if (!handle) return ack && ack({ success: false, error: "Handle is required" });
+
+      const normalizedHandle = handle.replace("@", "");
+      const targetUser = await User.findOne({ handle: normalizedHandle });
+      if (!targetUser) return ack && ack({ success: false, error: "User not found" });
+      if (targetUser._id.toString() === socket.userId) return ack && ack({ success: false, error: "Cannot send request to yourself" });
+
+      // Block & friend checks
+      const currentUser = await User.findById(socket.userId);
+      if ((targetUser.blocked || []).map(String).includes(socket.userId)) return ack && ack({ success: false, error: "You are blocked by this user" });
+      if ((currentUser.blocked || []).map(String).includes(targetUser._id.toString())) return ack && ack({ success: false, error: "Cannot send request to blocked user" });
+      if ((currentUser.friends || []).map(String).includes(targetUser._id.toString())) return ack && ack({ success: false, error: "Already friends" });
+
+      const existingPending = await FriendRequest.findOne({
+        $or: [
+          { from: socket.userId, to: targetUser._id, status: "pending" },
+          { from: targetUser._id, to: socket.userId, status: "pending" },
+        ],
+      });
+      if (existingPending) return ack && ack({ success: false, error: "Friend request already exists" });
+
+      const friendRequest = await FriendRequest.create({
+        from: socket.userId,
+        to: targetUser._id,
+        message: message || "",
+        status: "pending",
+      });
+
+      const populated = await FriendRequest.findById(friendRequest._id)
+        .populate("from", "name handle image status lastSeen")
+        .populate("to", "name handle image status lastSeen");
+
+      // Notification to target
+      await Notification.create({
+        to: targetUser._id,
+        type: "friend_request",
+        title: `${socket.user.name}`,
+        body: message || "Sent you a friend request",
+        data: { requestId: friendRequest._id, from: socket.userId },
+        fromUser: socket.userId,
+      });
+
+      // Emit to target if online
+      const targetSocketId = userSockets.get(targetUser._id.toString());
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("friend:request:new", { request: populated });
+      }
+
+      return ack && ack({ success: true, request: populated });
+    } catch (error) {
+      console.error("friend:request:create error:", error);
+      return ack && ack({ success: false, error: "Internal server error" });
+    }
+  });
+
+  socket.on("friend:request:action", async (data, ack) => {
+    try {
+      const { requestId, action } = data || {};
+      if (!requestId || !["accept", "reject", "cancel"].includes(action)) {
+        return ack && ack({ success: false, error: "Invalid input" });
+      }
+
+      const reqDoc = await FriendRequest.findById(requestId);
+      if (!reqDoc) return ack && ack({ success: false, error: "Request not found" });
+
+      // Permission checks
+      if (action === "cancel" && reqDoc.from.toString() !== socket.userId) {
+        return ack && ack({ success: false, error: "Cannot cancel someone else's request" });
+      }
+      if (["accept", "reject"].includes(action) && reqDoc.to.toString() !== socket.userId) {
+        return ack && ack({ success: false, error: "Cannot accept/reject not addressed to you" });
+      }
+
+      const fromId = reqDoc.from.toString();
+      const toId = reqDoc.to.toString();
+
+      if (action === "accept") {
+        const [fromUser, toUser] = await Promise.all([
+          User.findById(fromId),
+          User.findById(toId),
+        ]);
+        if (fromUser && toUser) {
+          if (!fromUser.friends.map(String).includes(toId)) fromUser.friends.push(toId);
+          if (!toUser.friends.map(String).includes(fromId)) toUser.friends.push(fromId);
+          await Promise.all([fromUser.save(), toUser.save()]);
+        }
+        await FriendRequest.findByIdAndDelete(requestId);
+
+        // Notify both sides
+        const payload = { requestId, from: fromId, to: toId };
+        const fromSock = userSockets.get(fromId);
+        const toSock = userSockets.get(toId);
+        if (fromSock) io.to(fromSock).emit("friend:request:accepted", payload);
+        if (toSock) io.to(toSock).emit("friend:request:accepted", payload);
+
+        await Notification.create({
+          to: fromId,
+          type: "friend_request",
+          title: "Friend request accepted",
+          body: "Your friend request was accepted",
+          data: { to: toId },
+          fromUser: toId,
+        });
+
+        return ack && ack({ success: true, message: "accepted" });
+      }
+
+      if (action === "cancel") {
+        await FriendRequest.findByIdAndDelete(requestId);
+        const payload = { requestId, from: fromId, to: toId };
+        const fromSock = userSockets.get(fromId);
+        const toSock = userSockets.get(toId);
+        if (fromSock) io.to(fromSock).emit("friend:request:cancelled", payload);
+        if (toSock) io.to(toSock).emit("friend:request:cancelled", payload);
+        return ack && ack({ success: true, message: "cancelled" });
+      }
+
+      if (action === "reject") {
+        reqDoc.status = "rejected";
+        await reqDoc.save();
+        const populated = await FriendRequest.findById(requestId)
+          .populate("from", "name handle image status lastSeen")
+          .populate("to", "name handle image status lastSeen");
+        const payload = { request: populated };
+        const fromSock = userSockets.get(fromId);
+        const toSock = userSockets.get(toId);
+        if (fromSock) io.to(fromSock).emit("friend:request:rejected", payload);
+        if (toSock) io.to(toSock).emit("friend:request:rejected", payload);
+        return ack && ack({ success: true, request: populated });
+      }
+
+      return ack && ack({ success: false, error: "Unhandled action" });
+    } catch (error) {
+      console.error("friend:request:action error:", error);
+      return ack && ack({ success: false, error: "Internal server error" });
+    }
+  });
+
+  socket.on("friend:remove", async (data, ack) => {
+    try {
+      const { friendId } = data || {};
+      if (!friendId) return ack && ack({ success: false, error: "friendId required" });
+
+      const user = await User.findById(socket.userId);
+      if (!user) return ack && ack({ success: false, error: "User not found" });
+
+      user.friends = (user.friends || []).filter((id) => id.toString() !== friendId);
+      await user.save();
+
+      const friend = await User.findById(friendId);
+      if (friend) {
+        friend.friends = (friend.friends || []).filter((id) => id.toString() !== socket.userId);
+        await friend.save();
+      }
+
+      const friendSock = userSockets.get(friendId);
+      if (friendSock) io.to(friendSock).emit("friend:removed", { userId: socket.userId });
+      return ack && ack({ success: true });
+    } catch (error) {
+      console.error("friend:remove error:", error);
+      return ack && ack({ success: false, error: "Internal server error" });
+    }
+  });
+
+  // Chat management events
+  socket.on("chat:member:add", async (data, ack) => {
+    try {
+      const { chatId, userIds } = data || {};
+      if (!chatId || !userIds?.length) return ack && ack({ success: false, error: "chatId and userIds required" });
+
+      const chat = await Chat.findById(chatId).populate("participants", "name handle image status lastSeen").populate("admins", "name handle image");
+      if (!chat) return ack && ack({ success: false, error: "Chat not found" });
+      if (!chat.isGroup) return ack && ack({ success: false, error: "Cannot add members to direct chat" });
+
+      // Check if user is admin
+      const isAdmin = chat.admins.some(admin => admin._id.toString() === socket.userId);
+      if (!isAdmin) return ack && ack({ success: false, error: "Only admins can add members" });
+
+      // Add new participants
+      const newParticipants = userIds.filter(id => !chat.participants.some(p => p._id.toString() === id));
+      if (newParticipants.length === 0) return ack && ack({ success: false, error: "All users are already members" });
+
+      chat.participants.push(...newParticipants);
+      await chat.save();
+
+      // Populate new participants
+      const updatedChat = await Chat.findById(chatId)
+        .populate("participants", "name handle image status lastSeen")
+        .populate("admins", "name handle image")
+        .populate("createdBy", "name handle image");
+
+      // Create system message
+      const systemMessage = await Message.create({
+        chatId,
+        sender: socket.userId,
+        type: "system",
+        text: "",
+        system: { event: "member_added", targets: newParticipants },
+      });
+      await systemMessage.populate("sender", "name image handle");
+
+      // Emit to all participants
+      io.to(`chat:${chatId}`).emit("message:new", { message: systemMessage, chatId });
+      io.to(`chat:${chatId}`).emit("chat:updated", { chat: updatedChat });
+
+      return ack && ack({ success: true, chat: updatedChat });
+    } catch (error) {
+      console.error("chat:member:add error:", error);
+      return ack && ack({ success: false, error: "Internal server error" });
+    }
+  });
+
+  socket.on("chat:member:remove", async (data, ack) => {
+    try {
+      const { chatId, userId } = data || {};
+      if (!chatId || !userId) return ack && ack({ success: false, error: "chatId and userId required" });
+
+      const chat = await Chat.findById(chatId).populate("participants", "name handle image status lastSeen").populate("admins", "name handle image");
+      if (!chat) return ack && ack({ success: false, error: "Chat not found" });
+      if (!chat.isGroup) return ack && ack({ success: false, error: "Cannot remove members from direct chat" });
+
+      // Check if user is admin or removing themselves
+      const isAdmin = chat.admins.some(admin => admin._id.toString() === socket.userId);
+      const isRemovingSelf = userId === socket.userId;
+      if (!isAdmin && !isRemovingSelf) return ack && ack({ success: false, error: "Only admins can remove other members" });
+
+      // Remove from participants and admins
+      chat.participants = chat.participants.filter(p => p._id.toString() !== userId);
+      chat.admins = chat.admins.filter(a => a._id.toString() !== userId);
+      await chat.save();
+
+      // Populate updated chat
+      const updatedChat = await Chat.findById(chatId)
+        .populate("participants", "name handle image status lastSeen")
+        .populate("admins", "name handle image")
+        .populate("createdBy", "name handle image");
+
+      // Create system message
+      const systemMessage = await Message.create({
+        chatId,
+        sender: socket.userId,
+        type: "system",
+        text: "",
+        system: { event: "member_removed", targets: [userId] },
+      });
+      await systemMessage.populate("sender", "name image handle");
+
+      // Emit to remaining participants
+      io.to(`chat:${chatId}`).emit("message:new", { message: systemMessage, chatId });
+      io.to(`chat:${chatId}`).emit("chat:updated", { chat: updatedChat });
+
+      // If user left, remove them from the room
+      if (isRemovingSelf) {
+        const userSocketId = userSockets.get(userId);
+        if (userSocketId) {
+          io.to(userSocketId).emit("chat:left", { chatId });
+        }
+      }
+
+      return ack && ack({ success: true, chat: updatedChat });
+    } catch (error) {
+      console.error("chat:member:remove error:", error);
+      return ack && ack({ success: false, error: "Internal server error" });
+    }
+  });
+
 
   // Promote admin in group chat
   socket.on("admin:promote", async (data) => {
@@ -470,14 +743,12 @@ io.on("connection", async (socket) => {
       // Create a system message for the promotion event and emit it
       let systemMessage = null;
       try {
-        // Populate targets with full user info
-        const targetUsers = await User.find({ _id: { $in: [userId] } }).select("name handle image");
         systemMessage = await Message.create({
           chatId,
           sender: socket.userId,
           type: "system",
           text: "",
-          system: { event: "admin_promoted", targets: targetUsers.map(u => u.toObject()) },
+          system: { event: "admin_promoted", targets: [userId] },
         });
         if (systemMessage) {
           await systemMessage.populate("sender", "name image handle");
