@@ -26,8 +26,8 @@ export default function OverviewTab({
   // 1:1 Chat: Professional, detailed profile card
   if (!isGroup && otherUser) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] py-10 bg-gradient-to-br from-blue-50 to-white">
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-lg px-10 py-10 w-full max-w-lg flex flex-col items-center">
+      <div className="flex flex-col items-center justify-center min-h-[400px] py-10 ">
+        <div className="px-10 py-10 w-full max-w-lg flex flex-col items-center">
           <div className="relative mb-6">
             <div className="h-32 w-32 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center border-4 border-blue-200 shadow">
               {otherUser.image ? (

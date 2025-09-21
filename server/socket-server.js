@@ -27,7 +27,16 @@ mongoose.connect(MONGODB_URI, {
   family: 4,
 });
 
-const port = parseInt(process.env.PORT || "3000", 10);
+// Parse command line arguments for port
+const args = process.argv.slice(2);
+let portArg;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '-p' || args[i] === '--port') {
+    portArg = args[i + 1];
+    break;
+  }
+}
+const port = parseInt(portArg || process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
 const handle = app.getRequestHandler();
@@ -189,7 +198,8 @@ io.use(async (socket, next) => {
     socket.user = user;
     next();
   } catch (error) {
-    next(new Error("Authentication error"));
+    console.error("Socket authentication error:", error);
+    next(new Error("Authentication error: " + (error.message || "Unknown error")));
   }
 });
 
@@ -265,8 +275,21 @@ io.on("connection", async (socket) => {
   socket.on("message:new", async (data, ack) => {
     let message = null;
     try {
+      // Validate input data
       const { chatId, text, media, replyTo } = data;
-      if (!chatId) return ack && ack({ success: false, error: "chatId is required" });
+      if (!chatId) {
+        return ack && ack({ success: false, error: "chatId is required" });
+      }
+      
+      // Validate chat exists and user is a participant
+      const chat = await Chat.findById(chatId);
+      if (!chat) {
+        return ack && ack({ success: false, error: "Chat not found" });
+      }
+      
+      if (!chat.participants.some(p => p.toString() === socket.userId)) {
+        return ack && ack({ success: false, error: "You are not a participant in this chat" });
+      }
 
       // Create message in database
       message = await Message.create({
@@ -315,8 +338,8 @@ io.on("connection", async (socket) => {
       });
 
       // Create notifications for offline users
-      const chat = await Chat.findById(chatId).populate("participants");
-      const offlineUsers = chat.participants.filter(
+      const chatWithParticipants = await Chat.findById(chatId).populate("participants");
+      const offlineUsers = chatWithParticipants.participants.filter(
         (participant) =>
           !userSockets.has(participant._id.toString()) &&
           participant._id.toString() !== socket.userId
@@ -342,19 +365,42 @@ io.on("connection", async (socket) => {
       console.error("Error handling new message:", error);
       if (ack) {
         ack({
-          success: !!message,
-          message,
-          error: "Failed to send message",
+          success: false,
+          message: null,
+          error: "Failed to send message: " + (error.message || "Unknown error"),
         });
       }
     }
   });
 
   // Handle message edit
-  socket.on("message:edit", async (data) => {
+  socket.on("message:edit", async (data, ack) => {
     try {
       const { messageId, text, media } = data;
-      console.log(text);
+      
+      // Validate input
+      if (!messageId) {
+        return ack && ack({ success: false, error: "messageId is required" });
+      }
+      
+      // Find message and verify ownership
+      const originalMessage = await Message.findById(messageId);
+      if (!originalMessage) {
+        return ack && ack({ success: false, error: "Message not found" });
+      }
+      
+      if (originalMessage.sender.toString() !== socket.userId) {
+        return ack && ack({ success: false, error: "You can only edit your own messages" });
+      }
+      
+      // Check edit time window (15 minutes)
+      const editWindow = 15 * 60 * 1000; // 15 minutes
+      const messageAge = Date.now() - new Date(originalMessage.createdAt).getTime();
+      if (messageAge > editWindow) {
+        return ack && ack({ success: false, error: "Message is too old to edit" });
+      }
+      
+      // Update message
       const message = await Message.findByIdAndUpdate(
         messageId,
         { text, media: media || [], editedAt: new Date() },
@@ -366,9 +412,16 @@ io.on("connection", async (socket) => {
           message,
           chatId: message.chatId,
         });
+        
+        if (ack) {
+          ack({ success: true, message });
+        }
       }
     } catch (error) {
       console.error("Error handling message edit:", error);
+      if (ack) {
+        ack({ success: false, error: "Failed to edit message: " + (error.message || "Unknown error") });
+      }
     }
   });
 
@@ -535,6 +588,7 @@ io.on("connection", async (socket) => {
   socket.on("friend:request:create", async (data, ack) => {
     try {
       const { handle, message } = data || {};
+      console.log(handle)
       if (!handle) return ack && ack({ success: false, error: "Handle is required" });
 
       const normalizedHandle = handle.replace("@", "");

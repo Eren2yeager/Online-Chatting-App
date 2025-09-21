@@ -61,7 +61,7 @@ export function ToastProvider({ children }) {
       {children}
 
       <ToastPortal>
-        <div className="fixed bottom-1/4 left-1/2 -translate-x-1/2 z-[1100000] space-y-2 pointer-events-none">
+        <div className="fixed bottom-[20px] left-1/2 -translate-x-1/2 z-[1100000] space-y-2 pointer-events-none">
           <AnimatePresence>
             {toasts.map(({ id, text, image }) => (
               <motion.div 

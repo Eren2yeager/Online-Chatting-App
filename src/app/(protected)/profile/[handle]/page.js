@@ -24,8 +24,8 @@ import {
 } from "@heroicons/react/24/outline";
 
 import { QRCodeSVG } from "qrcode.react";
-import toast from "react-hot-toast";
-import { useSocketEmit } from "@/lib/socket";
+import { useToast } from "@/components/layout/ToastContext";
+import { useSocketEmitter } from "@/lib/socket";
 import { useSocket } from "@/lib/socket";
 
 function dateFormatter(date) {
@@ -51,7 +51,7 @@ const RELATIONSHIP = {
 };
 
 export default function ProfileByHandlePage() {
-  const { emitAck } = useSocketEmit();
+  const { emitAck } = useSocketEmitter();
   const { socket } = useSocket();
   const params = useParams();
   const router = useRouter();
@@ -67,7 +67,7 @@ export default function ProfileByHandlePage() {
     image: "",
   });
   const [imageFile, setImageFile] = useState(null);
-
+  const toast = useToast();
   // New state for current user and relationship status
   const [currentUser, setCurrentUser] = useState(null);
   const [relationship, setRelationship] = useState(RELATIONSHIP.NONE);
@@ -94,11 +94,11 @@ export default function ProfileByHandlePage() {
         });
       } else {
         setUser(null);
-        toast.error("User not found");
+        toast({ text :"User not found"});
       }
     } catch (err) {
       setUser(null);
-      toast.error("Failed to load user");
+      toast({ text :"Failed to load user"});
     } finally {
       setLoading(false);
     }
@@ -229,29 +229,26 @@ export default function ProfileByHandlePage() {
 
   const copyProfileHandle = () => {
     navigator.clipboard.writeText(`@${user.handle}`);
-    toast.success("Profile handle copied to clipboard!");
+    toast({text :"Profile handle copied to clipboard!"});
   };
 
-  const copyProfileLink = () => {
-    const profileUrl = `${window.location.origin}/invite/${user.handle}`;
-    navigator.clipboard.writeText(profileUrl);
-    toast.success("Profile link copied to clipboard!");
-  };
+
 
   // Friend request actions
-  const sendFriendRequest = async () => {
+  const sendFriendRequest = async (handle) => {
     try {
+   
       const res = await emitAck("friend:request:create", { handle });
       if (res?.success) {
-        toast.success("Friend request sent");
+        toast({text :"Friend request sent"});
         setRelationship(RELATIONSHIP.OUTGOING);
         setPendingRequestId(res?.request?._id || null);
         await checkExistingRelationship(user._id);
       } else {
-        toast.error(res?.error || "Failed to send request");
+        toast({  text : `emitAck error : ${res?.error}` || "Failed to send request"});
       }
     } catch {
-      toast.error("Failed to send request");
+      toast({ text :"Failed to send request"});
     }
   };
 
@@ -260,16 +257,16 @@ export default function ProfileByHandlePage() {
     try {
       const res = await emitAck("friend:request:action", { requestId: pendingRequestId, action: "cancel" });
       if (res?.success) {
-        toast.success("Friend request cancelled");
+        toast({text :"Friend request cancelled"});
         setRelationship(RELATIONSHIP.NONE);
         setPendingRequestId(null);
         // Re-check relationship to ensure UI is in sync with backend
         await checkExistingRelationship(user._id);
       } else {
-        toast.error(res?.error || "Failed to cancel request");
+        toast({ text :res?.error || "Failed to cancel request"});
       }
     } catch {
-      toast.error("Failed to cancel request");
+      toast({ text :"Failed to cancel request"});
     }
   };
 
@@ -278,17 +275,17 @@ export default function ProfileByHandlePage() {
     try {
       const res = await emitAck("friend:request:action", { requestId: pendingRequestId, action: "accept" });
       if (res?.success) {
-        toast.success("Friend request accepted");
+        toast({text :"Friend request accepted"});
 
         setRelationship(RELATIONSHIP.FRIEND);
         setPendingRequestId(null);
         // Re-check relationship to ensure UI is in sync with backend
 
       } else {
-        toast.error(res?.error || "Failed to accept request");
+        toast({ text :res?.error || "Failed to accept request"});
       }
     } catch {
-      toast.error("Failed to accept request");
+      toast({ text :"Failed to accept request"});
     }
   };
 
@@ -297,16 +294,16 @@ export default function ProfileByHandlePage() {
     try {
       const res = await emitAck("friend:request:action", { requestId: pendingRequestId, action: "reject" });
       if (res?.success) {
-        toast.success("Friend request rejected");
+        toast({text :"Friend request rejected"});
         setRelationship(RELATIONSHIP.NONE);
         setPendingRequestId(null);
         // Re-check relationship to ensure UI is in sync with backend
         await checkExistingRelationship(user._id);
       } else {
-        toast.error(res?.error || "Failed to reject request");
+        toast({ text :res?.error || "Failed to reject request"});
       }
     } catch {
-      toast.error("Failed to reject request");
+      toast({ text :"Failed to reject request"});
     }
   };
 
@@ -315,14 +312,14 @@ export default function ProfileByHandlePage() {
     try {
       const res = await emitAck("friend:remove", { friendId });
       if (res?.success) {
-        toast.success("Friend removed successfully");
+        toast({text :"Friend removed successfully"});
         setRelationship(RELATIONSHIP.NONE);
       } else {
-        toast.error(res?.error || "Failed to remove friend");
+        toast({ text :res?.error || "Failed to remove friend"});
       }
     } catch (error) {
       console.error("Error removing friend:", error);
-      toast.error("Failed to remove friend");
+      toast({ text :"Failed to remove friend"});
     }
   };
 
@@ -337,12 +334,12 @@ export default function ProfileByHandlePage() {
       const data = await res.json();
       if (res.ok && data.success) {
         setRelationship(RELATIONSHIP.YOU_BLOCKED);
-        toast.success("User blocked");
+        toast({text :"User blocked"});
       } else {
-        toast.error(data?.error || "Failed to block");
+        toast({ text :data?.error || "Failed to block"});
       }
     } catch {
-      toast.error("Failed to block");
+      toast({ text :"Failed to block"});
     }
   };
 
@@ -354,12 +351,12 @@ export default function ProfileByHandlePage() {
       const data = await res.json();
       if (res.ok && data.success) {
         setRelationship(RELATIONSHIP.NONE);
-        toast.success("User unblocked");
+        toast({text :"User unblocked"});
       } else {
-        toast.error(data?.error || "Failed to unblock");
+        toast({ text :data?.error || "Failed to unblock"});
       }
     } catch {
-      toast.error("Failed to unblock");
+      toast({ text :"Failed to unblock"});
     }
   };
 
@@ -374,11 +371,11 @@ export default function ProfileByHandlePage() {
         });
       } catch (error) {
         navigator.clipboard.writeText(profileUrl);
-        toast.success("Profile link copied!");
+        toast({text :"Profile link copied!"});
       }
     } else {
       navigator.clipboard.writeText(profileUrl);
-      toast.success("Profile link copied!");
+      toast({text :"Profile link copied!"});
     }
   };
 
@@ -386,7 +383,7 @@ export default function ProfileByHandlePage() {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image size should be less than 5MB");
+        toast({ text :"Image size should be less than 5MB"});
         return;
       }
       setImageFile(file);
@@ -422,12 +419,12 @@ export default function ProfileByHandlePage() {
         setUser(updatedUser);
         setIsEditing(false);
         setImageFile(null);
-        toast.success("Profile updated successfully");
+        toast({text :"Profile updated successfully"});
       } else {
-        toast.error("Failed to update profile");
+        toast({ text :"Failed to update profile"});
       }
     } catch (error) {
-      toast.error("Failed to update profile");
+      toast({ text :"Failed to update profile"});
     } finally {
       setUploading(false);
     }
@@ -435,19 +432,60 @@ export default function ProfileByHandlePage() {
 
   const startChat = async () => {
     try {
-      const res = await fetch("/api/chats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId: user._id }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        router.push(`/chats/${data.data._id}`);
-      } else {
-        toast.error("Failed to start chat");
+      if (!user || !user._id) {
+        toast({ text :"Invalid user"});
+        return;
       }
-    } catch {
-      toast.error("Failed to start chat");
+
+      // First check if a chat already exists
+      const response = await fetch("/api/chats");
+      const data = await response.json();
+      console.log(data)
+      if (data.success) {
+        const existingChat = data.data.chats.find(
+          (chat) =>
+            !chat.isGroup &&
+            chat.participants.length === 2 &&
+            chat.participants.some(
+              (p) =>
+                (typeof p === "object" && (p._id === user._id || p._id?.toString() === user._id)) ||
+                (typeof p === "string" && p === user._id)
+            ) &&
+            chat.participants.some(
+              (p) =>
+                (typeof p === "object" && (p._id === currentUser._id || p._id?.toString() === currentUser._id)) ||
+                (typeof p === "string" && p === currentUser._id)
+            )
+        );
+        
+        if (existingChat) {
+          router.push(`/chats/${existingChat._id}`);
+          return;
+        }
+      }
+
+      // Create new chat
+      const createResponse = await fetch("/api/chats", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          isGroup: false,
+          participants: [user._id],
+        }),
+      });
+
+      const newChat = await createResponse.json();
+
+      if (newChat.success && newChat.data && newChat.data._id) {
+        router.push(`/chats/${newChat.data._id}`);
+      } else {
+        toast({ text :newChat?.error || "Failed to start chat"});
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+      toast({ text :"Failed to start chat"});
     }
   };
 
@@ -565,7 +603,7 @@ export default function ProfileByHandlePage() {
         return (
           <>
             <button
-              onClick={sendFriendRequest}
+              onClick={() => sendFriendRequest(user.handle)}
               className="w-full flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
             >
               <UserPlusIcon className="w-5 h-5 mr-2" />
@@ -609,14 +647,7 @@ export default function ProfileByHandlePage() {
                 user.status === "online" ? "bg-green-500" : "bg-gray-400"
               }`}
             ></div>
-            {relationship === RELATIONSHIP.SELF && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="absolute -bottom-2 -left-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-colors"
-              >
-                <PencilIcon className="w-4 h-4" />
-              </button>
-            )}
+
           </div>
 
           <h1 className="text-4xl font-bold text-gray-900 mt-6 mb-2">
@@ -919,7 +950,7 @@ export default function ProfileByHandlePage() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, name: e.target.value })
                 }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full p-3 border text-black border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 maxLength="50"
                 placeholder="Your name"
               />
@@ -935,7 +966,7 @@ export default function ProfileByHandlePage() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, bio: e.target.value })
                 }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full p-3 text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 rows="3"
                 placeholder="Tell us about yourself..."
                 maxLength="200"

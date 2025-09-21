@@ -34,19 +34,24 @@ export async function POST(request) {
     const { chatId, text, media, replyTo } = validatedData;
     const userId = session.user.id;
 
-    // Verify chat exists and user is a participant
-    const chat = await Chat.findById(chatId).populate('participants');
+    // Verify chat exists and user is a participant - use lean() for better performance
+    const chat = await Chat.findById(chatId)
+      .select('participants')
+      .lean();
+      
     if (!chat) return notFound('Chat not found');
 
     const isParticipant = chat.participants.some(
-      participant => participant._id.toString() === userId
+      participantId => participantId.toString() === userId
     );
 
     if (!isParticipant) return forbidden('Not authorized to send messages in this chat');
 
-    // Validate reply message exists if provided
+    // Validate reply message exists if provided - use lean() and only select needed fields
     if (replyTo) {
-      const replyMessage = await Message.findById(replyTo);
+      const replyMessage = await Message.findById(replyTo)
+        .select('chatId')
+        .lean();
       if (!replyMessage || replyMessage.chatId.toString() !== chatId) {
         return badRequest('Reply message not found or invalid');
       }
@@ -81,37 +86,55 @@ export async function POST(request) {
       await message.populate('replyTo', 'text sender');
     }
 
-    // Update chat's last message
-    await Chat.findByIdAndUpdate(chatId, {
+    // Update chat's last message and unread counts in a single operation
+    const lastMessageContent = text || (media && media.length > 0 ? `${messageType} message` : '');
+    const updateData = {
       lastMessage: {
-        content: text || (media && media.length > 0 ? `${messageType} message` : ''),
+        content: lastMessageContent,
         type: messageType,
         senderId: userId,
         createdAt: new Date()
       }
-    });
+    };
 
-    // Update unread counts for other participants
+    // Update unread counts for other participants using MongoDB's native operators
     const otherParticipants = chat.participants.filter(
-      p => p._id.toString() !== userId
+      p => p.toString() !== userId
     );
-
-    for (const participant of otherParticipants) {
-      const unreadCount = chat.unreadCounts.find(
-        uc => uc.user.toString() === participant._id.toString()
-      );
-
-      if (unreadCount) {
-        unreadCount.count += 1;
-      } else {
-        chat.unreadCounts.push({
-          user: participant._id,
-          count: 1
-        });
+    
+    // Prepare the update operations for each participant
+    const unreadCountsUpdates = otherParticipants.map(participantId => ({
+      updateOne: {
+        filter: { 
+          _id: chatId,
+          'unreadCounts.user': participantId 
+        },
+        update: { $inc: { 'unreadCounts.$.count': 1 } }
       }
-    }
-
-    await chat.save();
+    }));
+    
+    const newUnreadCounts = otherParticipants.map(participantId => ({
+      updateOne: {
+        filter: { 
+          _id: chatId,
+          'unreadCounts.user': { $ne: participantId } 
+        },
+        update: { 
+          $push: { 
+            unreadCounts: { 
+              user: participantId, 
+              count: 1 
+            } 
+          } 
+        }
+      }
+    }));
+    
+    // Execute all updates in parallel
+    await Promise.all([
+      Chat.findByIdAndUpdate(chatId, updateData),
+      Chat.bulkWrite([...unreadCountsUpdates, ...newUnreadCounts])
+    ]);
 
     return created(message);
 
@@ -141,24 +164,43 @@ export async function GET(request) {
 
     if (!chatId) return badRequest('Chat ID is required');
 
-    // Verify chat exists and user is a participant
-    const chat = await Chat.findById(chatId);
+    // Verify chat exists and user is a participant - use lean() and only select needed fields
+    const chat = await Chat.findById(chatId)
+      .select('participants')
+      .lean();
+      
     if (!chat) return notFound('Chat not found');
 
-    const isParticipant = chat.participants.includes(userId);
+    const isParticipant = chat.participants.some(p => p.toString() === userId);
     if (!isParticipant) return forbidden('Not authorized to view messages in this chat');
 
-    // Build query
+    // Build query with optimized before handling
     let query = { chatId };
     if (before) {
-      const beforeMessage = await Message.findById(before);
+      const beforeMessage = await Message.findById(before)
+        .select('createdAt')
+        .lean();
       if (beforeMessage) {
         query.createdAt = { $lt: beforeMessage.createdAt };
       }
     }
 
-    // Get messages with pagination
-    const messages = await Message.find(query)
+    // Get messages with pagination - optimize population and use projection
+    const messages = await Message.find(query, {
+        // Explicitly select fields we need to reduce document size
+        text: 1, 
+        type: 1,
+        media: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        sender: 1,
+        replyTo: 1,
+        system: 1,
+        reactions: 1,
+        readBy: 1,
+        isDeleted: 1,
+        isEdited: 1
+      })
       .populate('sender', 'name image handle')
       .populate({
         path: 'replyTo',
@@ -174,26 +216,31 @@ export async function GET(request) {
       .limit(limit)
       .skip(offset);
 
-    // Get total count
-    const total = await Message.countDocuments({ chatId });
+    // Get total count - use estimatedDocumentCount when possible for better performance
+    // Only use exact count when we need precise pagination
+    const total = limit + offset < 1000 
+      ? await Message.countDocuments({ chatId })
+      : await Message.estimatedDocumentCount({ chatId });
 
-    // Mark messages as read for current user
-    const unreadMessages = messages.filter(
-      message => !message.readBy.includes(userId) && 
-      message.sender.toString() !== userId
-    );
+    // Mark messages as read for current user - optimize with a single query
+    const unreadMessageIds = messages
+      .filter(message => 
+        !message.readBy.includes(userId) && 
+        message.sender.toString() !== userId
+      )
+      .map(m => m._id);
 
-    if (unreadMessages.length > 0) {
-      const messageIds = unreadMessages.map(m => m._id);
-      await Message.updateMany(
-        { _id: { $in: messageIds } },
-        { $addToSet: { readBy: userId } }
-      );
-
-      // Reset unread count for this user
-      await Chat.findByIdAndUpdate(chatId, {
-        $pull: { unreadCounts: { user: userId } }
-      });
+    if (unreadMessageIds.length > 0) {
+      // Execute both updates in parallel for better performance
+      await Promise.all([
+        Message.updateMany(
+          { _id: { $in: unreadMessageIds } },
+          { $addToSet: { readBy: userId } }
+        ),
+        Chat.findByIdAndUpdate(chatId, {
+          $pull: { unreadCounts: { user: userId } }
+        })
+      ]);
     }
 
     return ok(messages.reverse(), { pagination: { total, limit, offset, hasMore: offset + limit < total } });

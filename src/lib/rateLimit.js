@@ -1,62 +1,120 @@
 /**
- * Simple in-memory rate limiter for API routes
- * Uses sliding window algorithm
+ * Rate limiter using a sliding window algorithm with configurable limits
  */
-
 class RateLimiter {
   constructor() {
+    // Store request timestamps in memory
     this.requests = new Map();
     this.windowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
     this.maxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100;
+    
+    // Cleanup interval (every 5 minutes)
+    this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
   }
 
   /**
    * Check if request is allowed
    * @param {string} key - Rate limit key (IP + user ID)
-   * @returns {boolean} - Whether request is allowed
+   * @param {number} [customMaxRequests] - Optional custom max requests for this check
+   * @param {number} [customWindowMs] - Optional custom window duration for this check
+   * @returns {Object} - Result with success flag and remaining requests
    */
-  isAllowed(key) {
+  isAllowed(key, customMaxRequests, customWindowMs) {
     const now = Date.now();
-    const windowStart = now - this.windowMs;
+    const windowMs = customWindowMs || this.windowMs;
+    const maxRequests = customMaxRequests || this.maxRequests;
+    const windowStart = now - windowMs;
 
     if (!this.requests.has(key)) {
-      this.requests.set(key, []);
+      this.requests.set(key, [now]);
+      return {
+        success: true,
+        remaining: maxRequests - 1,
+        limit: maxRequests,
+        resetAt: new Date(now + windowMs)
+      };
     }
 
+    // Get existing requests and filter out old ones
     const userRequests = this.requests.get(key);
-    
-    // Remove old requests outside the window
     const validRequests = userRequests.filter(timestamp => timestamp > windowStart);
     
     // Check if under limit
-    if (validRequests.length >= this.maxRequests) {
-      return false;
-    }
-
-    // Add current request
-    validRequests.push(now);
-    this.requests.set(key, validRequests);
+    const allowed = validRequests.length < maxRequests;
     
-    return true;
+    if (allowed) {
+      // Add current request and update
+      validRequests.push(now);
+      this.requests.set(key, validRequests);
+    }
+    
+    return {
+      success: allowed,
+      remaining: Math.max(0, maxRequests - validRequests.length - (allowed ? 1 : 0)),
+      limit: maxRequests,
+      resetAt: new Date(now + windowMs)
+    };
   }
 
   /**
    * Get remaining requests for a key
    * @param {string} key - Rate limit key
-   * @returns {number} - Remaining requests
+   * @param {number} [customMaxRequests] - Optional custom max requests
+   * @param {number} [customWindowMs] - Optional custom window duration
+   * @returns {Object} - Information about rate limit status
    */
-  getRemaining(key) {
+  getRemaining(key, customMaxRequests, customWindowMs) {
     const now = Date.now();
-    const windowStart = now - this.windowMs;
+    const windowMs = customWindowMs || this.windowMs;
+    const maxRequests = customMaxRequests || this.maxRequests;
+    const windowStart = now - windowMs;
 
     if (!this.requests.has(key)) {
-      return this.maxRequests;
+      return {
+        remaining: maxRequests,
+        limit: maxRequests,
+        resetAt: new Date(now + windowMs)
+      };
     }
 
     const userRequests = this.requests.get(key);
     const validRequests = userRequests.filter(timestamp => timestamp > windowStart);
     
-    return Math.max(0, this.maxRequests - validRequests.length);
+    return {
+      remaining: Math.max(0, maxRequests - validRequests.length),
+      limit: maxRequests,
+      resetAt: new Date(now + windowMs)
+    };
+  }
+  
+  /**
+   * Clean up old entries to prevent memory leaks
+   */
+  cleanup() {
+    const now = Date.now();
+    const windowStart = now - this.windowMs;
+    
+    for (const [key, requests] of this.requests.entries()) {
+      // Filter out requests outside the current window
+      const validRequests = requests.filter(timestamp => timestamp > windowStart);
+      
+      if (validRequests.length === 0) {
+        // Remove empty entries
+        this.requests.delete(key);
+      } else if (validRequests.length !== requests.length) {
+        // Update with only recent requests
+        this.requests.set(key, validRequests);
+      }
+    }
+  }
+  
+  /**
+   * Stop the cleanup interval
+   */
+  stop() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
   }
 
   /**
@@ -104,81 +162,73 @@ class RateLimiter {
 // Create singleton instance
 const rateLimiter = new RateLimiter();
 
-// Clean up every 5 minutes
-setInterval(() => {
-  rateLimiter.cleanup();
-}, 5 * 60 * 1000);
+/**
+ * Rate limit middleware for API routes
+ * @param {Request} request - Next.js request object
+ * @param {number} maxRequests - Maximum requests per window
+ * @param {number} windowMs - Window duration in milliseconds
+ * @returns {Promise<Object>} - Result with success flag and rate limit info
+ */
+export async function rateLimit(request, maxRequests, windowMs) {
+  try {
+    // Get IP address
+    const ip = request.headers.get('x-forwarded-for') || 
+              request.headers.get('x-real-ip') || 
+              'unknown';
+    
+    // Get user ID from session if available
+    let userId = 'anonymous';
+    try {
+      const { cookies } = request;
+      const sessionToken = cookies.get('next-auth.session-token')?.value;
+      if (sessionToken) {
+        // This is a simplified example - in a real app, you'd verify the session token
+        userId = sessionToken.slice(0, 10); // Use part of session token as user identifier
+      }
+    } catch (error) {
+      console.error('Error getting user ID for rate limiting:', error);
+    }
+    
+    // Create a composite key from IP and user ID
+    const key = `${ip}:${userId}`;
+    
+    // Check if allowed with custom limits if provided
+    const result = rateLimiter.isAllowed(key, maxRequests, windowMs);
+    
+    return {
+      success: result.success,
+      remaining: result.remaining,
+      limit: result.limit,
+      resetAt: result.resetAt
+    };
+  } catch (error) {
+    console.error('Rate limiting error:', error);
+    // Allow request on error but log the issue
+    return { 
+      success: true,
+      error: error.message 
+    };
+  }
+}
 
 /**
- * Rate limiting middleware for API routes
- * @param {Object} options - Rate limiting options
- * @returns {Function} - Express middleware function
+ * Apply rate limit headers to a response
+ * @param {Response} response - Next.js response object
+ * @param {Object} rateLimitResult - Result from rateLimit function
+ * @returns {Response} - Response with rate limit headers
  */
-export function rateLimit(options = {}) {
-  const {
-    windowMs = rateLimiter.windowMs,
-    maxRequests = rateLimiter.maxRequests,
-    keyGenerator = (req) => {
-      // Use IP + user ID if available, otherwise just IP
-      const userKey = req.user?.id || 'anonymous';
-      return `${req.ip}-${userKey}`;
-    },
-    skipSuccessfulRequests = false,
-    skipFailedRequests = false,
-  } = options;
-
-  return async (req, res, next) => {
-    const key = keyGenerator(req);
-    
-    if (!rateLimiter.isAllowed(key)) {
-      const remaining = rateLimiter.getRemaining(key);
-      const resetTime = rateLimiter.getResetTime(key);
-      
-      res.setHeader('X-RateLimit-Limit', maxRequests);
-      res.setHeader('X-RateLimit-Remaining', remaining);
-      res.setHeader('X-RateLimit-Reset', resetTime.toISOString());
-      
-      return res.status(429).json({
-        error: 'Too many requests',
-        message: 'Rate limit exceeded. Please try again later.',
-        retryAfter: Math.ceil((resetTime.getTime() - Date.now()) / 1000),
-      });
-    }
-
-    // Set rate limit headers
-    const remaining = rateLimiter.getRemaining(key);
-    const resetTime = rateLimiter.getResetTime(key);
-    
-    res.setHeader('X-RateLimit-Limit', maxRequests);
-    res.setHeader('X-RateLimit-Remaining', remaining);
-    res.setHeader('X-RateLimit-Reset', resetTime.toISOString());
-
-    // Track response status for skip options
-    const originalSend = res.send;
-    res.send = function(data) {
-      const statusCode = res.statusCode;
-      
-      if (skipSuccessfulRequests && statusCode < 400) {
-        // Don't count successful requests
-        const userRequests = rateLimiter.requests.get(key);
-        if (userRequests && userRequests.length > 0) {
-          userRequests.pop(); // Remove the last request
-        }
-      }
-      
-      if (skipFailedRequests && statusCode >= 400) {
-        // Don't count failed requests
-        const userRequests = rateLimiter.requests.get(key);
-        if (userRequests && userRequests.length > 0) {
-          userRequests.pop(); // Remove the last request
-        }
-      }
-      
-      return originalSend.call(this, data);
-    };
-
-    next();
-  };
+export function applyRateLimitHeaders(response, rateLimitResult) {
+  if (!response || !rateLimitResult) return response;
+  
+  // Add standard rate limit headers
+  response.headers.set('X-RateLimit-Limit', rateLimitResult.limit || 100);
+  response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining || 0);
+  
+  if (rateLimitResult.resetAt) {
+    response.headers.set('X-RateLimit-Reset', Math.floor(rateLimitResult.resetAt.getTime() / 1000));
+  }
+  
+  return response;
 }
 
 /**

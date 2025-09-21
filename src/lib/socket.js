@@ -15,6 +15,8 @@ export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const MAX_RECONNECT_ATTEMPTS = 10;
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -26,10 +28,13 @@ export function SocketProvider({ children }) {
       return;
     }
 
+    // Reset reconnect attempts when session changes
+    setReconnectAttempts(0);
+
     // Create socket connection with authentication (same-origin)
     const newSocket = io({
       auth: {
-        // Send user id as token for server-side authentication fallback
+        // Send JWT token for server-side authentication
         token: session?.user?.id,
       },
       transports: ['websocket', 'polling'],
@@ -37,7 +42,8 @@ export function SocketProvider({ children }) {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+      timeout: 20000, // Increase timeout to 20 seconds
     });
 
     // Connection events
@@ -45,22 +51,52 @@ export function SocketProvider({ children }) {
       console.log('Socket connected');
       setIsConnected(true);
       setConnectionError(null);
+      setReconnectAttempts(0); // Reset reconnect attempts on successful connection
     });
 
     newSocket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
       setIsConnected(false);
+      
+      // Handle specific disconnect reasons
+      if (reason === 'io server disconnect') {
+        // Server initiated disconnect, attempt to reconnect manually
+        newSocket.connect();
+      }
+      // For other reasons, socket.io will try to reconnect automatically
     });
 
     newSocket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
       setConnectionError(error.message);
       setIsConnected(false);
+      setReconnectAttempts(prev => prev + 1);
+      
+      // Log detailed error information
+      console.error('Connection error details:', {
+        message: error.message,
+        type: error.type,
+        description: error.description,
+        attempts: reconnectAttempts + 1
+      });
     });
 
     newSocket.on('error', (error) => {
       console.error('Socket error:', error);
-      setConnectionError(error.message);
+      setConnectionError(typeof error === 'string' ? error : error.message || 'Unknown error');
+    });
+
+    newSocket.on('reconnect', (attemptNumber) => {
+      console.log(`Socket reconnected after ${attemptNumber} attempts`);
+    });
+
+    newSocket.on('reconnect_error', (error) => {
+      console.error('Socket reconnection error:', error);
+    });
+
+    newSocket.on('reconnect_failed', () => {
+      console.error('Socket reconnection failed after all attempts');
+      setConnectionError('Failed to connect after multiple attempts. Please refresh the page.');
     });
 
     setSocket(newSocket);
@@ -69,7 +105,7 @@ export function SocketProvider({ children }) {
     return () => {
       newSocket.disconnect();
     };
-  }, [session?.user?.id, session?.accessToken, session?.token]);
+  }, [session?.user?.id]);
 
   const value = {
     socket,
@@ -96,9 +132,48 @@ export function useSocket() {
 }
 
 /**
- * Hook to emit socket events with error handling
+ * Hook to emit socket events with error handling and acknowledgment
+ * @param {string} eventName - The event name to emit
+ * @param {any} data - The data to send
+ * @param {Object} options - Options for the emit
+ * @returns {Promise} - A promise that resolves with the acknowledgment or rejects with an error
  */
 export function useSocketEmit() {
+  const { socket, isConnected } = useSocket();
+
+  const emitEvent = async (eventName, data, options = {}) => {
+    const { timeout = 5000 } = options;
+    
+    if (!socket || !isConnected) {
+      throw new Error('Socket is not connected');
+    }
+
+    return new Promise((resolve, reject) => {
+      // Set timeout for acknowledgment
+      const timer = setTimeout(() => {
+        reject(new Error(`Event ${eventName} acknowledgment timed out after ${timeout}ms`));
+      }, timeout);
+
+      // Emit with acknowledgment callback
+      socket.emit(eventName, data, (response) => {
+        clearTimeout(timer);
+        
+        if (response && response.success === false) {
+          reject(new Error(response.error || 'Unknown error'));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+  };
+
+  return emitEvent;
+}
+
+/**
+ * Hook to emit socket events
+ */
+export function useSocketEmitter() {
   const { socket, isConnected } = useSocket();
 
   const emit = (event, data) => {

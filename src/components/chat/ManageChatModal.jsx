@@ -17,7 +17,7 @@ import MembersTab from "./chatSpareParts/membersTab";
 import MediaTab from "./chatSpareParts/mediaTab";
 import LinksTab from "./chatSpareParts/linksTab";
 import { useSession } from 'next-auth/react';
-import { useSocketEmit } from '@/lib/socket';
+import { useSocketEmitter } from '@/lib/socket';
 
 export default function ManageChatModal({
   isOpen,
@@ -51,7 +51,7 @@ export default function ManageChatModal({
   const showToast = useToast?.() || (() => {});
   const { setMediaToView } = useMediaFullView();
   const { data: session } = useSession();
-  const { emitAck } = useSocketEmit();
+  const { emitAck } = useSocketEmitter();
 
   const stats = useMemo(() => ({
     totalMembers: participants.length,

@@ -4,7 +4,8 @@ import connectDB from '@/lib/mongodb.js';
 import Chat from '@/models/Chat.js';
 import User from '@/models/User.js';
 import { validateRequest, chatUpdateSchema } from '@/lib/validators.js';
-import { rateLimit } from '@/lib/rateLimit.js';
+import { rateLimit, applyRateLimitHeaders } from '@/lib/rateLimit.js';
+import { ok, badRequest, unauthorized, forbidden, notFound, serverError, tooManyRequests } from '@/lib/api-helpers.js';
 
 /**
  * GET /api/chats/[chatId]
@@ -15,19 +16,15 @@ export async function GET(request, { params }) {
     // Rate limiting
     const rateLimitResult = await rateLimit(request, 100, 60 * 1000); // 100 requests per minute
     if (!rateLimitResult.success) {
-      return Response.json(
-        { success: false, error: 'Rate limit exceeded' },
-        { status: 429 }
-      );
+      const response = tooManyRequests();
+      applyRateLimitHeaders(response, rateLimitResult);
+      return response;
     }
 
     // Authentication check
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return Response.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return unauthorized('Authentication required');
     }
 
     const { chatId } =await params;
@@ -35,18 +32,30 @@ export async function GET(request, { params }) {
     // Connect to database
     await connectDB();
 
-    // Find the chat and populate participants
-    const chat = await Chat.findById(chatId)
-      .populate('participants', 'name email image handle status lastSeen')
-      .populate('admins', 'name email image handle')
-      .populate('createdBy', 'name email image handle')
-      .populate('lastMessage.senderId', 'name image');
+    // Find the chat and populate participants - optimize with a single populate call and projection
+    const chat = await Chat.findById(chatId, {
+        participants: 1,
+        admins: 1,
+        createdBy: 1,
+        name: 1,
+        isGroup: 1,
+        lastMessage: 1,
+        unreadCounts: 1,
+        description: 1,
+        image: 1,
+        privacy: 1,
+        createdAt: 1,
+        updatedAt: 1
+      })
+      .populate([
+        { path: 'participants', select: 'name email image handle status lastSeen' },
+        { path: 'admins', select: 'name email image handle' },
+        { path: 'createdBy', select: 'name email image handle' },
+        { path: 'lastMessage.senderId', select: 'name image' }
+      ]);
 
     if (!chat) {
-      return Response.json(
-        { success: false, error: 'Chat not found' },
-        { status: 404 }
-      );
+      return notFound('Chat not found');
     }
 
     // Check if user is a participant
@@ -55,10 +64,7 @@ export async function GET(request, { params }) {
     );
 
     if (!isParticipant) {
-      return Response.json(
-        { success: false, error: 'Access denied' },
-        { status: 403 }
-      );
+      return forbidden('Access denied');
     }
 
     // Check if user is admin
@@ -71,17 +77,11 @@ export async function GET(request, { params }) {
     chatData.isAdmin = isAdmin;
     chatData.isParticipant = true;
 
-    return Response.json({
-      success: true,
-      data: chatData
-    });
+    return ok({ data: chatData });
 
   } catch (error) {
     console.error('Error fetching chat:', error);
-    return Response.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    return serverError('Error fetching chat');
   }
 }
 
@@ -91,13 +91,18 @@ export async function GET(request, { params }) {
  */
 export async function PATCH(request, { params }) {
   try {
+    // Rate limiting
+    const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
+    if (!rateLimitResult.success) {
+      const response = tooManyRequests();
+      applyRateLimitHeaders(response, rateLimitResult);
+      return response;
+    }
+    
     // Authentication check
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return Response.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return unauthorized('Authentication required');
     }
 
     const { chatId } = params;
@@ -106,15 +111,16 @@ export async function PATCH(request, { params }) {
     // Connect to database
     await connectDB();
 
-    // Find the chat
-    const chat = await Chat.findById(chatId)
+    // Find the chat - use projection to get only needed fields
+    const chat = await Chat.findById(chatId, {
+      participants: 1,
+      admins: 1,
+      isGroup: 1
+    })
       .populate('admins', 'name email image handle');
 
     if (!chat) {
-      return Response.json(
-        { success: false, error: 'Chat not found' },
-        { status: 404 }
-      );
+      return notFound('Chat not found');
     }
 
     // Check if user is an admin (only admins can update group settings)
@@ -124,19 +130,13 @@ export async function PATCH(request, { params }) {
       );
 
       if (!isAdmin) {
-        return Response.json(
-          { success: false, error: 'Only admins can update group settings' },
-          { status: 403 }
-        );
+        return forbidden('Only admins can update group settings');
       }
     } else {
       // For 1:1 chats, only participants can update
       const isParticipant = chat.participants.includes(session.user.id);
       if (!isParticipant) {
-        return Response.json(
-          { success: false, error: 'Access denied' },
-          { status: 403 }
-        );
+        return forbidden('Access denied');
       }
     }
 
@@ -150,24 +150,32 @@ export async function PATCH(request, { params }) {
     const updatedChat = await Chat.findByIdAndUpdate(
       chatId,
       updateData,
-      { new: true }
+      { new: true, select: {
+        participants: 1,
+        admins: 1,
+        createdBy: 1,
+        name: 1,
+        isGroup: 1,
+        lastMessage: 1,
+        description: 1,
+        image: 1,
+        privacy: 1,
+        createdAt: 1,
+        updatedAt: 1
+      }}
     )
-      .populate('participants', 'name email image handle status lastSeen')
-      .populate('admins', 'name email image handle')
-      .populate('createdBy', 'name email image handle')
-      .populate('lastMessage.senderId', 'name image');
+      .populate([
+        { path: 'participants', select: 'name email image handle status lastSeen' },
+        { path: 'admins', select: 'name email image handle' },
+        { path: 'createdBy', select: 'name email image handle' },
+        { path: 'lastMessage.senderId', select: 'name image' }
+      ]);
 
-    return Response.json({
-      success: true,
-      data: updatedChat
-    });
+    return ok({ data: updatedChat });
 
   } catch (error) {
     console.error('Error updating chat:', error);
-    return Response.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    return serverError('Error updating chat');
   }
 }
 
@@ -180,19 +188,15 @@ export async function DELETE(request, { params }) {
     // Rate limiting
     const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
     if (!rateLimitResult.success) {
-      return Response.json(
-        { success: false, error: 'Rate limit exceeded' },
-        { status: 429 }
-      );
+      const response = tooManyRequests();
+      applyRateLimitHeaders(response, rateLimitResult);
+      return response;
     }
 
     // Authentication check
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return Response.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return unauthorized('Authentication required');
     }
 
     const { chatId } = await params;
@@ -200,16 +204,19 @@ export async function DELETE(request, { params }) {
     // Connect to database
     await connectDB();
 
-    // Find the chat
-    const chat = await Chat.findById(chatId)
-      .populate('participants', 'name email image handle')
-      .populate('admins', 'name email image handle');
+    // Find the chat - optimize with projection and a single populate call
+    const chat = await Chat.findById(chatId, {
+        participants: 1,
+        admins: 1,
+        isGroup: 1
+      })
+      .populate([
+        { path: 'participants', select: 'name email image handle' },
+        { path: 'admins', select: 'name email image handle' }
+      ]);
 
     if (!chat) {
-      return Response.json(
-        { success: false, error: 'Chat not found' },
-        { status: 404 }
-      );
+      return notFound('Chat not found');
     }
 
     // Check if user is a participant
@@ -238,37 +245,29 @@ export async function DELETE(request, { params }) {
       // If no participants left, delete the chat
       if (chat.participants.length === 0) {
         await Chat.findByIdAndDelete(chatId);
-        return Response.json({
-          success: true,
-          message: 'Chat deleted'
-        });
+        return ok({ message: 'Chat deleted' });
       }
 
       // If no admins left, make the first participant an admin
       if (chat.admins.length === 0 && chat.participants.length > 0) {
         chat.admins = [chat.participants[0]._id];
       }
-
-      await chat.save();
-
-      return Response.json({
-        success: true,
-        message: 'Left the group'
+      
+      // Use findByIdAndUpdate for better performance than save()
+      await Chat.findByIdAndUpdate(chatId, {
+        participants: chat.participants.map(p => p._id),
+        admins: chat.admins.map(a => typeof a === 'object' ? a._id : a)
       });
+
+      return ok({ message: 'Left the group' });
     } else {
       // For 1:1 chats, remove both participants
       await Chat.findByIdAndDelete(chatId);
-      return Response.json({
-        success: true,
-        message: 'Chat deleted'
-      });
+      return ok({ message: 'Chat deleted' });
     }
 
   } catch (error) {
     console.error('Error leaving chat:', error);
-    return Response.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    return serverError('Error leaving chat');
   }
 }

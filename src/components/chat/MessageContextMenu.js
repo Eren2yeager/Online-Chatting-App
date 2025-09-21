@@ -11,7 +11,7 @@ import {
   ClipboardDocumentIcon
 } from '@heroicons/react/24/outline';
 import { addReaction } from '../../lib/client/messages';
-import { useSocketEmit } from '../../lib/socket';
+import { useSocketEmitter } from '../../lib/socket';
 import EmojiPicker from '../common/EmojiPicker.jsx';
 
 /**
@@ -26,7 +26,7 @@ export default function MessageContextMenu({
   isOwnMessage
 }) {
   const menuRef = useRef(null);
-  const { emit, emitAck } = useSocketEmit();
+  const { emit, emitAck } = useSocketEmitter();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   useEffect(() => {

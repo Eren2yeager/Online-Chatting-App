@@ -30,7 +30,7 @@ const TypingIndicator = memo(function TypingIndicator({ typingUsers = [] }) {
         />
       </div>
       {/* Message bubble with only bouncing dots */}
-      <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-2 shadow-sm min-w-[44px] flex items-center">
+      <div className="bg-gray-300  rounded-md px-4 py-3 shadow-sm min-w-[44px] flex items-center">
         <div className="flex items-center space-x-1">
           <motion.div
             className="w-2 h-2 bg-gray-500 rounded-full"

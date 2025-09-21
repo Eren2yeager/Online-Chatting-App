@@ -4,8 +4,8 @@ import connectDB from '@/lib/mongodb.js';
 import Message from '@/models/Message.js';
 import Chat from '@/models/Chat.js';
 import { validateRequest, messageUpdateSchema, messageDeleteSchema } from '@/lib/validators.js';
-import { rateLimit } from '@/lib/rateLimit.js';
-import { NextResponse } from 'next/server';
+import { rateLimit, applyRateLimitHeaders } from '@/lib/rateLimit.js';
+import { ok, badRequest, unauthorized, forbidden, notFound, serverError, tooManyRequests } from '@/lib/api-helpers.js';
 
 /**
  * PATCH /api/messages/[messageId]
@@ -16,28 +16,20 @@ export async function PATCH(request, { params }) {
     // Rate limiting
     const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
     if (!rateLimitResult.success) {
-      return Response.json(
-        { success: false, error: 'Rate limit exceeded' },
-        { status: 429 }
-      );
+      const response = tooManyRequests();
+      return applyRateLimitHeaders(response, rateLimitResult);
     }
 
     // Authentication check
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return Response.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return unauthorized();
     }
 
     // Validate request body
     const validation = await validateRequest(request, messageUpdateSchema);
     if (!validation.success) {
-      return Response.json(
-        { success: false, error: validation.error },
-        { status: 400 }
-      );
+      return badRequest(validation.error);
     }
 
     const { messageId } = params;
@@ -46,59 +38,54 @@ export async function PATCH(request, { params }) {
     // Connect to database
     await connectDB();
 
-    // Find the message
+    // Find the message with optimized query (projection and combined populate)
     const message = await Message.findById(messageId)
-      .populate('sender', 'name image')
-      .populate('chatId', 'participants');
+      .select('sender chatId text media createdAt')
+      .populate([{ path: 'sender', select: 'name image' }, { path: 'chatId', select: 'participants' }]);
 
     if (!message) {
-      return Response.json(
-        { success: false, error: 'Message not found' },
-        { status: 404 }
-      );
+      return notFound('Message not found');
     }
 
     // Check if user is the sender
     if (message.sender._id.toString() !== session.user.id) {
-      return Response.json(
-        { success: false, error: 'You can only edit your own messages' },
-        { status: 403 }
-      );
+      return forbidden('You can only edit your own messages');
     }
 
     // Check if message is too old to edit (e.g., 15 minutes)
     const messageAge = Date.now() - new Date(message.createdAt).getTime();
     const editWindow = 15 * 60 * 1000; // 15 minutes
     if (messageAge > editWindow) {
-      return Response.json(
-        { success: false, error: 'Message is too old to edit' },
-        { status: 400 }
-      );
+      return badRequest('Message is too old to edit');
     }
 
-    // Update the message
-    message.text = text;
-    if (media !== undefined) {
-      message.media = media;
-    }
-    message.editedAt = new Date();
-    await message.save();
+    // Update the message using findByIdAndUpdate for better performance
+    const updatedMessage = await Message.findByIdAndUpdate(
+      messageId,
+      { 
+        text, 
+        ...(media !== undefined && { media }), 
+        editedAt: new Date() 
+      },
+      { new: true }
+    ).populate([{ path: 'sender', select: 'name image' }, { path: 'chatId', select: 'participants' }]);
 
     // Update chat's last message if this was the last message
-    const chat = await Chat.findById(message.chatId._id);
+    const chat = await Chat.findById(updatedMessage.chatId._id);
     if (chat.lastMessage && chat.lastMessage.messageId.toString() === messageId) {
-      chat.lastMessage = {
-        messageId: message._id,
-        text: message.text,
-        senderId: message.sender._id,
-        createdAt: message.createdAt
-      };
-      await chat.save();
+      // Use findByIdAndUpdate for better performance
+      await Chat.findByIdAndUpdate(chat._id, {
+        lastMessage: {
+          messageId: updatedMessage._id,
+          text: updatedMessage.text,
+          senderId: updatedMessage.sender._id,
+          createdAt: updatedMessage.createdAt
+        }
+      });
     }
 
-    return Response.json({
-      success: true,
-      data: message
+    return ok({
+      data: updatedMessage
     });
 
   } catch (error) {
@@ -119,28 +106,20 @@ export async function DELETE(request, { params }) {
     // Rate limiting
     const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
     if (!rateLimitResult.success) {
-      return Response.json(
-        { success: false, error: 'Rate limit exceeded' },
-        { status: 429 }
-      );
+      const response = tooManyRequests();
+      return applyRateLimitHeaders(response, rateLimitResult);
     }
 
     // Authentication check
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return Response.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return unauthorized();
     }
 
     // Validate request body
     const validation = await validateRequest(request, messageDeleteSchema);
     if (!validation.success) {
-      return Response.json(
-        { success: false, error: validation.error },
-        { status: 400 }
-      );
+      return badRequest(validation.error);
     }
 
     const { messageId } = params;
@@ -149,16 +128,13 @@ export async function DELETE(request, { params }) {
     // Connect to database
     await connectDB();
 
-    // Find the message
+    // Find the message with optimized query (projection and combined populate)
     const message = await Message.findById(messageId)
-      .populate('sender', 'name image')
-      .populate('chatId', 'participants');
+      .select('sender chatId text media createdAt isDeleted deletedFor')
+      .populate([{ path: 'sender', select: 'name image' }, { path: 'chatId', select: 'participants' }]);
 
     if (!message) {
-      return Response.json(
-        { success: false, error: 'Message not found' },
-        { status: 404 }
-      );
+      return notFound('Message not found');
     }
 
     if (deleteForEveryone) {
@@ -167,33 +143,30 @@ export async function DELETE(request, { params }) {
       const timeDiff = Date.now() - message.createdAt.getTime();
       
       if (timeDiff <= deleteWindow) {
-        message.isDeleted = true;
-        message.text = '';
-        message.media = [];
-        await message.save();
+        // Use findByIdAndUpdate for better performance
+        await Message.findByIdAndUpdate(messageId, {
+          isDeleted: true,
+          text: '',
+          media: []
+        });
         
-        return NextResponse.json({ success: true, message: 'Message deleted for everyone' });
+        return ok({ message: 'Message deleted for everyone' });
       } else {
-        return NextResponse.json(
-          { success: false, message: 'Message can only be deleted within 2 minutes' },
-          { status: 400 }
-        );
+        return badRequest('Message can only be deleted within 2 minutes');
       }
     } else {
-      // Delete for me only
+      // Delete for me only - use findByIdAndUpdate with $addToSet for better performance
       if (!message.deletedFor.includes(session.user.id)) {
-        message.deletedFor.push(session.user.id);
-        await message.save();
+        await Message.findByIdAndUpdate(messageId, {
+          $addToSet: { deletedFor: session.user.id }
+        });
       }
       
-      return NextResponse.json({ success: true, message: 'Message deleted for you' });
+      return ok({ message: 'Message deleted for you' });
     }
 
   } catch (error) {
     console.error('Error deleting message:', error);
-    return Response.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    return serverError();
   }
 }

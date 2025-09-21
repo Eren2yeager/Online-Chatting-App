@@ -84,10 +84,10 @@ ChatSchema.index({ 'lastMessage.createdAt': -1 });
 // Ensure participants and admins are unique
 ChatSchema.pre('save', function(next) {
   if (this.participants) {
-    this.participants = [...new Set(this.participants.map(id => id.toString()))].map(id => mongoose.Types.ObjectId(id));
+    this.participants = [...new Set(this.participants.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id));
   }
   if (this.admins) {
-    this.admins = [...new Set(this.admins.map(id => id.toString()))].map(id => mongoose.Types.ObjectId(id));
+    this.admins = [...new Set(this.admins.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id));
   }
   next();
 });

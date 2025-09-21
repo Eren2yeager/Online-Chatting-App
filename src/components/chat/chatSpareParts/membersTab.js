@@ -108,7 +108,7 @@ export default function MembersTab({
           return (
             <div
               key={p._id}
-              className="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50"
+              className="flex flex-col sm:flex-row gap-2  justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50"
             >
               <div className="flex items-center space-x-3">
                 <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
@@ -211,7 +211,7 @@ export default function MembersTab({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search friends..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full  text-black pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <div className="space-y-2 max-h-64 overflow-y-auto">

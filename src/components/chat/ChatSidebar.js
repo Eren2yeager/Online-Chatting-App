@@ -32,41 +32,43 @@ export default function ChatSidebar({
   const [showActions, setShowActions] = useState(false);
   const router = useRouter();
   const getChatDisplayName = (chat) => {
+    if (!chat) return 'Unknown Chat';
     if (chat.isGroup) {
       return chat.name || 'Group Chat';
     } else {
-      const otherParticipant = chat.participants.find(
+      const otherParticipant = Array.isArray(chat.participants) ? chat.participants.find(
         p => p._id !== session?.user?.id
-      );
+      ) : null;
       return otherParticipant?.name || 'Unknown User';
     }
   };
 
   const getChatAvatar = (chat) => {
+    if (!chat) return null;
     if (chat.isGroup) {
       return chat.avatar || null;
     } else {
-      const otherParticipant = chat.participants.find(
+      const otherParticipant = Array.isArray(chat.participants) ? chat.participants.find(
         p => p._id !== session?.user?.id
-      );
+      ) : null;
       return otherParticipant?.image || otherParticipant?.avatar || null;
     }
   };
 
   const getLastMessagePreview = (chat) => {
-    if (!chat.lastMessage.senderId) return 'No messages yet';
+    if (!chat.lastMessage || !chat.lastMessage.senderId) return 'No messages yet';
     
     const senderId = typeof chat.lastMessage.senderId === 'object' ? chat.lastMessage.senderId._id : chat.lastMessage.senderId;
-    const sender = chat.participants.find(p => p._id === senderId);
+    const sender = Array.isArray(chat.participants) ? chat.participants.find(p => p._id === senderId) : null;
     const senderName = senderId === session?.user?.id ? 'You' : (sender?.name || '');
     
-    let content = chat.lastMessage.content;
+    let content = chat.lastMessage.content || '';
     if (chat.lastMessage.type === 'image') {
       content = 'sent an Image';
     } else if (chat.lastMessage.type === 'video') {
       content = 'sent a Video';
     } else if (chat.lastMessage.type === 'audio') {
-      content = 'sent a Audio';
+      content = 'sent an Audio';
     } else if (chat.lastMessage.type === 'file') {
       content = 'sent a File';
     }
@@ -75,7 +77,8 @@ export default function ChatSidebar({
   };
 
   const getUnreadCount = (chat) => {
-    const unreadCount = chat.unreadCounts?.find(
+    if (!chat || !Array.isArray(chat.unreadCounts)) return 0;
+    const unreadCount = chat.unreadCounts.find(
       uc => uc.user === session?.user?.id
     );
     return unreadCount?.count || 0;
@@ -90,7 +93,7 @@ export default function ChatSidebar({
           </div>
         </div>
         <div className="flex-1 p-4">
-          {[...Array(5)].map((_, i) => (
+          {[...Array(8)].map((_, i) => (
             <div key={i} className="animate-pulse mb-4">
               <div className="flex items-center space-x-3">
                 <div className="h-12 w-12 bg-gray-200 rounded-full"></div>
@@ -132,7 +135,7 @@ export default function ChatSidebar({
           <div className="p-8 flex flex-col justify-center items-center h-full w-full">
             <ChatBubbleLeftRightIcon className="mx-auto h-15 w-15 p-4 text-white  bg-gradient-to-r rounded-full from-blue-500 to-purple-600" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No Conversations yet
+              No Conversations Found
             </h3>
     
             <div className="space-y-3">

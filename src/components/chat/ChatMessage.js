@@ -45,9 +45,11 @@ export default function ChatMessage({ message, isOwn, onContextMenu }) {
   );
 
   const getMessageContent = () => {
+    if (!message) return null;
+    
     // System messages: WhatsApp style in the middle with name
     if (message.type === "system") {
-      let description = message.text;
+      let description = message.text || '';
       let name = "";
       if (!description && message.system) {
         const evt = message.system.event;

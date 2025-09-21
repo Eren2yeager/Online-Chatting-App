@@ -5,7 +5,8 @@ import connectDB from '@/lib/mongodb.js';
 import User from '@/models/User.js';
 import Chat from '@/models/Chat.js';
 import { chatCreateSchema } from '@/lib/validators.js';
-// Removed express-style rateLimit middleware usage; not compatible with NextRequest
+import { ok, created, badRequest, unauthorized, serverError, tooManyRequests } from '@/lib/api-helpers.js';
+import { rateLimit, applyRateLimitHeaders } from '@/lib/rateLimit.js';
 
 /**
  * POST /api/chats
@@ -15,13 +16,18 @@ import mongoose from 'mongoose';
 
 export async function POST(request) {
   try {
+    // Rate limiting
+    const rateLimitResult = await rateLimit(request, 20, 60 * 1000); // 20 chat creations per minute
+    if (!rateLimitResult.success) {
+      const response = tooManyRequests();
+      applyRateLimitHeaders(response, rateLimitResult);
+      return response;
+    }
+    
     // Check authentication
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return unauthorized('Authentication required');
     }
 
     await connectDB();
@@ -32,10 +38,7 @@ export async function POST(request) {
     try {
       validatedData = await chatCreateSchema.parseAsync(body);
     } catch (error) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error.errors },
-        { status: 400 }
-      );
+      return badRequest('Validation failed', { details: error.errors });
     }
 
     let { isGroup, name, participants } = validatedData;
@@ -60,47 +63,41 @@ export async function POST(request) {
     });
 
     if (participantObjectIds.includes(null)) {
-      return NextResponse.json(
-        { error: 'Invalid participant ID(s)' },
-        { status: 400 }
-      );
+      return badRequest('Invalid participant ID(s)');
     }
 
-    // Validate participants exist and are friends (for 1:1 chats)
-    const participantUsers = await User.find({ _id: { $in: participantObjectIds } });
+    // Validate participants exist and are friends (for 1:1 chats) - use lean() and projection
+    const participantUsers = await User.find(
+      { _id: { $in: participantObjectIds } },
+      { _id: 1 }
+    ).lean();
+    
     if (participantUsers.length !== participantObjectIds.length) {
-      return NextResponse.json(
-        { error: 'One or more participants not found' },
-        { status: 400 }
-      );
+      return badRequest('One or more participants not found');
     }
 
-    // For 1:1 chats, ensure participants are friends
+    // For 1:1 chats, ensure participants are friends - optimize with projection
     if (!isGroup && participantObjectIds.length === 2) {
-      const currentUser = await User.findById(userId);
+      const currentUser = await User.findById(userId, { friends: 1 }).lean();
       const otherUser = participantUsers.find(p => p._id.toString() !== userId.toString());
 
       if (!currentUser.friends.some(friendId => friendId.toString() === otherUser._id.toString())) {
-        return NextResponse.json(
-          { error: 'Can only create 1:1 chats with friends' },
-          { status: 400 }
-        );
+        return badRequest('Can only create 1:1 chats with friends');
       }
     }
 
-    // Check if 1:1 chat already exists (order-insensitive)
+    // Check if 1:1 chat already exists (order-insensitive) - use lean() for better performance
     if (!isGroup && participantObjectIds.length === 2) {
-      const existingChat = await Chat.findOne({
-        isGroup: false,
-        participants: { $all: participantObjectIds, $size: 2 }
-      });
+      const existingChat = await Chat.findOne(
+        {
+          isGroup: false,
+          participants: { $all: participantObjectIds, $size: 2 }
+        },
+        { _id: 1, participants: 1, admins: 1, createdBy: 1, name: 1, isGroup: 1 }
+      ).lean();
 
       if (existingChat) {
-        return NextResponse.json({
-          success: true,
-          data: existingChat,
-          message: 'Chat already exists'
-        });
+        return ok({ data: existingChat, message: 'Chat already exists' });
       }
     }
 
@@ -113,22 +110,18 @@ export async function POST(request) {
       createdBy: new mongoose.Types.ObjectId(userId),
     });
 
-    // Populate participant details
-    await chat.populate('participants', 'name image handle status');
-    await chat.populate('admins', 'name image handle');
-    await chat.populate('createdBy', 'name image handle');
+    // Populate participant details - use a single populate operation for better performance
+    await Chat.populate(chat, [
+      { path: 'participants', select: 'name image handle status' },
+      { path: 'admins', select: 'name image handle' },
+      { path: 'createdBy', select: 'name image handle' }
+    ]);
 
-    return NextResponse.json({
-      success: true,
-      data: chat,
-    }, { status: 201 });
+    return created({ data: chat });
 
   } catch (error) {
     console.error('Error creating chat:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error?.message },
-      { status: 500 }
-    );
+    return serverError('Error creating chat', { details: error?.message });
   }
 }
 /**
@@ -137,13 +130,18 @@ export async function POST(request) {
  */
 export async function GET(request) {
   try {
+    // Rate limiting
+    const rateLimitResult = await rateLimit(request, 100, 60 * 1000); // 100 requests per minute
+    if (!rateLimitResult.success) {
+      const response = tooManyRequests();
+      applyRateLimitHeaders(response, rateLimitResult);
+      return response;
+    }
+    
     // Check authentication
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return unauthorized('Authentication required');
     }
 
     await connectDB();
@@ -162,22 +160,35 @@ export async function GET(request) {
       query.isGroup = true;
     }
 
-    // Get chats with pagination
-    const chats = await Chat.find(query)
+    // Get chats with pagination - optimize with projection and lean()
+    const chats = await Chat.find(query, {
+        // Explicitly select fields we need
+        participants: 1,
+        admins: 1,
+        createdBy: 1,
+        name: 1,
+        isGroup: 1,
+        lastMessage: 1,
+        unreadCounts: 1,
+        updatedAt: 1,
+        createdAt: 1
+      })
       .populate('participants', 'name image handle status lastSeen')
       .populate('admins', 'name image handle')
       .populate('createdBy', 'name image handle')
       .populate('lastMessage.senderId', 'name image handle')
       .sort({ 'lastMessage.createdAt': -1, updatedAt: -1 })
       .limit(limit)
-      .skip(offset);
+      .skip(offset)
+      .lean();
 
-    // Get total count
-    const total = await Chat.countDocuments(query);
-
-    return NextResponse.json({
-      success: true,
-      data: chats,
+    // Get total count - use estimatedDocumentCount for better performance when possible
+    const total = limit + offset < 1000 
+      ? await Chat.countDocuments(query)
+      : await Chat.estimatedDocumentCount(query);
+    
+    return ok({
+      chats: chats,
       pagination: {
         total,
         limit,
@@ -188,9 +199,6 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('Error fetching chats:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return serverError('Error fetching chats');
   }
 }

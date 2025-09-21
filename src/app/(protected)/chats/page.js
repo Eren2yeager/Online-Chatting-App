@@ -67,8 +67,11 @@ export default function ChatsPage() {
       setLoading(true);
       const response = await fetch("/api/chats");
       const data = await response.json();
-      if (data.success) {
-        setChats(data.data);
+      console.log(data)
+      if (data.success && Array.isArray(data.data.chats)) {
+        setChats(data.data.chats);
+      } else {
+        setChats([]);
       }
     } catch (error) {
       // Optionally show error
@@ -83,7 +86,7 @@ export default function ChatsPage() {
       const response = await fetch("/api/chats");
       const data = await response.json();
       if (data.success) {
-        const existingChat = data.data.find(
+        const existingChat = data.data.chats.find(
           (chat) =>
             !chat.isGroup &&
             chat.participants.length === 2 &&
@@ -143,7 +146,7 @@ export default function ChatsPage() {
     );
   };
 
-  const filteredChats = chats.filter((chat) => {
+  const filteredChats = chats && Array.isArray(chats) ? chats.filter((chat) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     if (chat.isGroup) {
@@ -157,7 +160,7 @@ export default function ChatsPage() {
         otherParticipant?.handle?.toLowerCase().includes(query)
       );
     }
-  });
+  }) : [];
 
   if (status === "loading") {
     return (
@@ -241,3 +244,4 @@ export default function ChatsPage() {
     </>
   );
 }
+

@@ -10,14 +10,13 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   useSocket,
-  useSocketEmit,
+  useSocketEmitter,
   useSocketListener,
   useTypingIndicator,
 } from "../../lib/socket";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import MessageContextMenu from "./MessageContextMenu";
-import ManageGroupModal from "./ManageGroupModal";
 import ManageChatModal from "./ManageChatModal";
 import TypingIndicator from "./TypingIndicator";
 import { useRouter } from "next/navigation";
@@ -37,7 +36,7 @@ export default function ChatWindow({
 }) {
   const { data: session } = useSession();
   const { socket, isConnected } = useSocket();
-  const { emit, emitAck } = useSocketEmit();
+  const { emit, emitAck } = useSocketEmitter();
   const messagesEndRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,12 +60,12 @@ export default function ChatWindow({
 
   // --- Friendship and Block Logic ---
   // Only applies to 1:1 chats
-  const isOneToOne = useMemo(() => !chat.isGroup && chat.participants?.length === 2, [chat]);
+  const isOneToOne = useMemo(() => chat && !chat.isGroup && Array.isArray(chat.participants) && chat.participants.length === 2, [chat]);
   const currentUserId = session?.user?.id;
 
   // Find the other participant (for 1:1)
   const otherParticipant = useMemo(() => {
-    if (!isOneToOne) return null;
+    if (!isOneToOne || !chat || !Array.isArray(chat.participants)) return null;
     return chat.participants.find((p) => p._id !== currentUserId);
   }, [chat, isOneToOne, currentUserId]);
 

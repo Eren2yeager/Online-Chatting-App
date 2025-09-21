@@ -12,7 +12,8 @@ const UserSchema = new mongoose.Schema({
     required: true,
     unique: true,
     lowercase: true,
-    trim: true
+    trim: true,
+    index: true
   },
   emailVerified: {
     type: Date,
@@ -30,7 +31,8 @@ const UserSchema = new mongoose.Schema({
     trim: true,
     minlength: 3,
     maxlength: 20,
-    match: /^[a-zA-Z0-9_-]+$/
+    match: /^[a-zA-Z0-9_-]+$/,
+    index: true
   },
   // User bio/description
   bio: {
@@ -73,8 +75,7 @@ const UserSchema = new mongoose.Schema({
  * - handle: Indexed for quick user lookup by handle (e.g., for friending, sharing, or searching users).
  * - email: Indexed for fast authentication and to enforce uniqueness.
  */
-UserSchema.index({ handle: 1 });
-UserSchema.index({ email: 1 });
+
 
 // Generate unique handle if not provided
 UserSchema.pre('save', async function(next) {

@@ -8,15 +8,23 @@ import {
   PaperAirplaneIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useSocketEmit } from "../../lib/socket";
+import { useSocketEmitter } from "../../lib/socket";
 import { Picker } from "emoji-mart";
 // import 'emoji-mart/dist/basic.css';
 
 /**
  * Chat input component with emoji picker and file upload
  */
-export default function ChatInput({ onSendMessage, disabled = false, chatId, replyToMessage, onCancelReply, editMessage, onCancelEdit }) {
-  const { emit } = useSocketEmit();
+export default function ChatInput({
+  onSendMessage,
+  disabled = false,
+  chatId,
+  replyToMessage,
+  onCancelReply,
+  editMessage,
+  onCancelEdit,
+}) {
+  const { emit } = useSocketEmitter();
   const [message, setMessage] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -41,7 +49,7 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
     } else {
       emit("typing:stop", { chatId });
     }
-  }, [ emit, chatId]);
+  }, [emit, chatId]);
 
   // Cleanup typing timeout and send typing:stop on unmount
   useEffect(() => {
@@ -65,17 +73,17 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
   // Edit mode
   useEffect(() => {
     if (editMessage) {
-      setMessage(editMessage.text || '');
+      setMessage(editMessage.text || "");
       // Convert media objects to File-like objects for editing
       if (editMessage.media && editMessage.media.length > 0) {
-        const mediaFiles = editMessage.media.map(media => ({
+        const mediaFiles = editMessage.media.map((media) => ({
           ...media,
           name: media.filename || media.publicId,
           type: media.mime,
           size: media.size,
           // Add a flag to identify this as an existing media item
           isExistingMedia: true,
-          originalMedia: media
+          originalMedia: media,
         }));
         setSelectedFiles(mediaFiles);
       } else {
@@ -90,7 +98,7 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
 
     // Typing indicator logic - only change state when necessary
     const shouldBeTyping = value.length > 0;
-    
+
     if (shouldBeTyping && !typing) {
       // Start typing - only set once when user starts typing
       setTyping(true);
@@ -113,7 +121,11 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
   };
 
   const handleSend = async () => {
-    if (!message.trim() && selectedFiles.length === 0) return;
+    if (
+      !message.trim() &&
+      (!Array.isArray(selectedFiles) || selectedFiles.length === 0)
+    )
+      return;
     if (disabled || uploading) return;
 
     try {
@@ -121,7 +133,7 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
 
       // Upload files first
       let uploadedMedia = [];
-      if (selectedFiles.length > 0) {
+      if (Array.isArray(selectedFiles) && selectedFiles.length > 0) {
         uploadedMedia = await uploadFiles(selectedFiles);
       }
 
@@ -131,13 +143,13 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
       // Reset state
       setMessage("");
       setSelectedFiles([]);
-      
+
       // Clear typing timeout and stop typing
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
       setTyping(false);
-      
+
       onCancelReply?.();
       onCancelEdit?.();
     } catch (error) {
@@ -189,12 +201,13 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
   };
 
   const uploadFiles = async (files) => {
+    if (!Array.isArray(files)) return [];
     const uploadedMedia = [];
 
     for (const file of files) {
       try {
         // If this is existing media from edit mode, use it directly
-        if (file.isExistingMedia && file.originalMedia) {
+        if (file && file.isExistingMedia && file.originalMedia) {
           uploadedMedia.push(file.originalMedia);
           continue;
         }
@@ -264,9 +277,15 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
       {replyToMessage && (
         <div className="flex items-center justify-between px-3 py-2 bg-gray-100 border-l-4 border-blue-500 rounded-md">
           <div className="text-sm text-gray-700 truncate">
-            Replying to {replyToMessage.sender?.name || 'User'}: {replyToMessage.text || (replyToMessage.media?.length ? 'Media' : '')}
+            Replying to {replyToMessage.sender?.name || "User"}:{" "}
+            {replyToMessage.text ||
+              (replyToMessage.media?.length ? "Media" : "")}
           </div>
-          <button onClick={onCancelReply} disabled={disabled || uploading} className="text-gray-500 hover:text-gray-700">
+          <button
+            onClick={onCancelReply}
+            disabled={disabled || uploading}
+            className="text-gray-500 hover:text-gray-700"
+          >
             <XMarkIcon className="h-4 w-4" />
           </button>
         </div>
@@ -275,9 +294,14 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
       {editMessage && (
         <div className="flex items-center justify-between px-3 py-2 bg-yellow-100 border-l-4 border-yellow-500 rounded-md">
           <div className="text-sm text-gray-700 truncate">
-            Editing: {editMessage.text || (editMessage.media?.length ? 'Media' : '')}
+            Editing:{" "}
+            {editMessage.text || (editMessage.media?.length ? "Media" : "")}
           </div>
-          <button onClick={onCancelEdit} disabled={disabled || uploading} className="text-gray-500 hover:text-gray-700">
+          <button
+            onClick={onCancelEdit}
+            disabled={disabled || uploading}
+            className="text-gray-500 hover:text-gray-700"
+          >
             <XMarkIcon className="h-4 w-4" />
           </button>
         </div>
@@ -287,97 +311,120 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
 
       )} */}
       {selectedFiles.length > 0 && (
-        <div className="w-full flex ">
+        <div className="w-full flex-col ">
+                    <div className="ml-auto bg-gray-300 h-fit w-fit m-1  rounded-full self-end">
+            <button
+              onClick={() => setSelectedFiles([])}
+              className="  px-2.5 py-0.5 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors "
+              disabled={disabled || uploading}
+            >
+              {/* <XMarkIcon className="h-5 w-5 text-white" /> */}
+              Clear
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[200px]">
+            {selectedFiles.map((file, index) => {
+              // Support both File objects and media objects from Message model
+              // File object: has .type, .name, .size, etc.
+              // Media object: has .url, .mime, .filename, .publicId, etc.
+              const isFileObject =
+                file instanceof File ||
+                (typeof File !== "undefined" && file instanceof File);
+              const fileType = isFileObject ? file.type || "" : file.mime || "";
+              const isImage = fileType.startsWith("image/");
+              const isVideo = fileType.startsWith("video/");
+              const isAudio = fileType.startsWith("audio/");
+              let previewUrl = "";
 
-        <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[200px]">
-          {selectedFiles.map((file, index) => {
-            // Support both File objects and media objects from Message model
-            // File object: has .type, .name, .size, etc.
-            // Media object: has .url, .mime, .filename, .publicId, etc.
-            const isFileObject = file instanceof File || (typeof File !== "undefined" && file instanceof File);
-            const fileType = isFileObject ? (file.type || '') : (file.mime || '');
-            const isImage = fileType.startsWith('image/');
-            const isVideo = fileType.startsWith('video/');
-            const isAudio = fileType.startsWith('audio/');
-            let previewUrl = '';
-
-            if (typeof window !== 'undefined') {
-              if (isFileObject && isImage) {
-                previewUrl = URL.createObjectURL(file);
-              } else if (!isFileObject && isImage && file.url) {
-                previewUrl = file.url;
+              if (typeof window !== "undefined") {
+                if (isFileObject && isImage) {
+                  previewUrl = URL.createObjectURL(file);
+                } else if (!isFileObject && isImage && file.url) {
+                  previewUrl = file.url;
+                }
               }
-            }
 
-            // For name, prefer .name (File), fallback to .filename (media object), fallback to .publicId
-            const displayName = isFileObject
-              ? file.name
-              : file.filename || file.publicId || 'Media';
+              // For name, prefer .name (File), fallback to .filename (media object), fallback to .publicId
+              const displayName = isFileObject
+                ? file.name
+                : file.filename || file.publicId || "Media";
 
-            return (
-              <div
-                key={index}
-                className="relative bg-gray-100 rounded-lg p-2 flex flex-col items-center space-y-1 bg-gradient-to-br from-gray-200 to-zinc-300 text-gray-900 min-w-[100px] max-w-[140px]"
-              >
-                <div className="w-full flex justify-end">
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <XMarkIcon className="h-4 w-4" />
-                  </button>
+              return (
+                <div
+                  key={index}
+                  className="relative bg-gray-100 rounded-lg p-2 flex flex-col items-center space-y-1 bg-gradient-to-br from-gray-200 to-zinc-300 text-gray-900 min-w-[100px] max-w-[140px]"
+                >
+                  <div className="w-full flex justify-end">
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="flex flex-col items-center w-full">
+                    {isImage && previewUrl && (
+                      <img
+                        src={previewUrl}
+                        alt={displayName}
+                        className="w-20 h-20 object-cover rounded mb-1 border"
+                      />
+                    )}
+                    {isVideo && (
+                      <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded mb-1 border">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-8 w-8 text-gray-500"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 6.5A2.5 2.5 0 016.5 4h11A2.5 2.5 0 0120 6.5v11a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 014 17.5v-11z"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    {isAudio && (
+                      <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded mb-1 border">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-8 w-8 text-gray-500"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 19V6l-2 2m0 0l-2-2m2 2v11m6-11v11m4-11v11"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    {!isImage && !isVideo && !isAudio && (
+                      <div className="flex items-center justify-center w-20 h-20 bg-gray-200 rounded mb-1 border">
+                        <span className="text-xs text-gray-500">File</span>
+                      </div>
+                    )}
+                    <span className="text-xs text-gray-600 truncate max-w-[120px] text-center">
+                      {displayName}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col items-center w-full">
-                  {isImage && previewUrl && (
-                    <img
-                      src={previewUrl}
-                      alt={displayName}
-                      className="w-20 h-20 object-cover rounded mb-1 border"
-                    />
-                  )}
-                  {isVideo && (
-                    <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded mb-1 border">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 6.5A2.5 2.5 0 016.5 4h11A2.5 2.5 0 0120 6.5v11a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 014 17.5v-11z" />
-                      </svg>
-                    </div>
-                  )}
-                  {isAudio && (
-                    <div className="w-20 h-20 flex items-center justify-center bg-gray-200 rounded mb-1 border">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l-2 2m0 0l-2-2m2 2v11m6-11v11m4-11v11" />
-                      </svg>
-                    </div>
-                  )}
-                  {!isImage && !isVideo && !isAudio && (
-                    <div className="flex items-center justify-center w-20 h-20 bg-gray-200 rounded mb-1 border">
-                      <span className="text-xs text-gray-500">File</span>
-                    </div>
-                  )}
-                  <span className="text-xs text-gray-600 truncate max-w-[120px] text-center">
-                    {displayName}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-                <div className="ml-auto bg-gray-300 h-fit w-fit m-1  rounded-full self-end">
-          <button
-            onClick={() => setSelectedFiles([])}
-            className="  px-2.5 py-0.5 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors "
-            disabled={disabled || uploading}
-          >
-            {/* <XMarkIcon className="h-5 w-5 text-white" /> */}
-            {window.innerWidth > 640 ? "Clear" : "x"}
-          </button>
-        </div>
-          
+              );
+            })}
+          </div>
+
         </div>
       )}
 
       {/* Input Area */}
-      <div className="flex items-end px-2 py-2 gap-2">
+      <div className="flex items-center justify-between px-2 py-2 gap-2">
         {/* File Upload */}
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -397,14 +444,14 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
 
         {/* Text Input */}
         <div className="flex-1 relative">
-          <input
+          <textarea
             ref={textareaRef}
             value={message}
             onChange={handleInputChange}
             onKeyPress={handleKeyPress}
             placeholder="Type a message..."
             disabled={disabled || uploading}
-            className="w-full text-black border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full min-h-10 text-black border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed  "
             maxLength={2000}
           />
 
@@ -416,7 +463,6 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
           )}
         </div>
 
-        
         {/* Send Button */}
         <button
           onClick={handleSend}
@@ -425,12 +471,12 @@ export default function ChatInput({ onSendMessage, disabled = false, chatId, rep
             uploading ||
             (!message.trim() && selectedFiles.length === 0)
           }
-          className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="p-2 bg-blue-500 self-text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {uploading ? (
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
           ) : (
-            <PaperAirplaneIcon className="h-5 w-5" />
+            <PaperAirplaneIcon className="h-5 w-5 transform -rotate-45" />
           )}
         </button>
       </div>

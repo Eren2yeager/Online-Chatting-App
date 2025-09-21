@@ -63,19 +63,21 @@ export default function ChatPage() {
       const response = await fetch('/api/chats');
       const data = await response.json();
 
-      if (data.success) {
-        setChats(data.data);
+      if (data.success && Array.isArray(data.data.chats)) {
+        setChats(data.data.chats);
         
         // If we have a chatId in params, select that chat
         if (chatId) {
-          const chat = data.data.find(c => c._id === chatId);
+          const chat = data.data.chats.find(c => c._id === chatId);
           if (chat) {
             setSelectedChat(chat);
           }
-        } else if (data.data.length > 0) {
+        } else if (data.data.chats.length > 0) {
           // Select first chat if none selected
-          setSelectedChat(data.data[0]);
+          setSelectedChat(data.data.chats[0]);
         }
+      } else {
+        setChats([]);
       }
     } catch (error) {
       console.error('Error fetching chats:', error);
