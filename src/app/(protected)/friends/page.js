@@ -460,7 +460,7 @@ export default function FriendsPage() {
                             </h3>
                             <p className="text-sm text-gray-500">@{request.from.handle}</p>
                             {request.message && (
-                              <p className="text-sm text-gray-600 mt-1 italic">"{request.message}"</p>
+                              <p className="text-sm text-gray-600 mt-1 italic">&ldquo;{request.message}&rdquo;</p>
                             )}
                           </div>
                         </div>
