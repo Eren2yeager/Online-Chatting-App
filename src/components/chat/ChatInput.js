@@ -451,7 +451,7 @@ export default function ChatInput({
             onKeyPress={handleKeyPress}
             placeholder="Type a message..."
             disabled={disabled || uploading}
-            className="w-full min-h-10 text-black border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed  "
+            className="w-full h-10 text-black border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed  "
             maxLength={2000}
           />
 

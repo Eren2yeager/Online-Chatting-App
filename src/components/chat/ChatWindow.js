@@ -383,7 +383,7 @@ export default function ChatWindow({
     if (chat.isGroup) {
       return chat.name || "Group Chat";
     } else {
-      const otherParticipant = chat.participants.find(
+      const otherParticipant = chat.participants?.find(
         (p) => p._id !== session?.user?.id
       );
       return otherParticipant?.name || "Unknown User";
@@ -394,7 +394,7 @@ export default function ChatWindow({
     if (chat.isGroup) {
       return chat.avatar || null;
     } else {
-      const otherParticipant = chat.participants.find(
+      const otherParticipant = chat.participants?.find(
         (p) => p._id !== session?.user?.id
       );
       return otherParticipant?.image || otherParticipant?.avatar || null;

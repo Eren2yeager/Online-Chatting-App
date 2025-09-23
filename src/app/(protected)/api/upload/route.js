@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerSession } from 'next-auth'; 
 import { authOptions } from '@/lib/auth.js';
 import cloudinary from '@/lib/cloudinary.js';
 
@@ -23,6 +23,10 @@ export async function POST(request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // Get original filename and extension
+    const originalFilename = file.name;
+    const fileExtension = originalFilename.split('.').pop().toLowerCase();
+
     // Upload to Cloudinary
     let result;
     if (type === 'audio') {
@@ -32,6 +36,7 @@ export async function POST(request) {
             resource_type: 'video', // Cloudinary uses 'video' for audio files
             folder: 'chatapp/audio',
             format: 'mp3',
+            filename_override: originalFilename,
           },
           (error, result) => {
             if (error) reject(error);
@@ -49,6 +54,7 @@ export async function POST(request) {
               { width: 800, height: 800, crop: 'limit' },
               { quality: 'auto' }
             ],
+            filename_override: originalFilename,
           },
           (error, result) => {
             if (error) reject(error);
@@ -62,7 +68,10 @@ export async function POST(request) {
           {
             resource_type: 'raw',
             folder: 'chatapp/documents',
-            format: 'auto',
+            filename_override: originalFilename,
+            use_filename: true,
+            unique_filename: true,
+            format: fileExtension, // Use original file extension instead of auto
           },
           (error, result) => {
             if (error) reject(error);
@@ -81,6 +90,7 @@ export async function POST(request) {
               { width: 800, height: 800, crop: 'limit' },
               { quality: 'auto' }
             ],
+            filename_override: originalFilename,
           },
           (error, result) => {
             if (error) reject(error);
@@ -95,6 +105,7 @@ export async function POST(request) {
       publicId: result.public_id,
       type: type,
       size: result.bytes,
+      originalName: originalFilename
     });
 
   } catch (error) {

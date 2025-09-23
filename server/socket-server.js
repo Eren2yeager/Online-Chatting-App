@@ -443,19 +443,19 @@ io.on("connection", async (socket) => {
 
       if (deleteForEveryone) {
         // Check if within deletion window (2 minutes)
-        const deleteWindow =
-          parseInt(process.env.MESSAGE_DELETE_WINDOW) || 120000;
-        const timeDiff = Date.now() - message.createdAt.getTime();
+        // const deleteWindow =
+        //   parseInt(process.env.MESSAGE_DELETE_WINDOW) || 120000;
+        // const timeDiff = Date.now() - message.createdAt.getTime();
 
-        console.log(
-          "Delete for everyone - time diff:",
-          timeDiff,
-          "ms, window:",
-          deleteWindow,
-          "ms"
-        );
+        // console.log(
+        //   "Delete for everyone - time diff:",
+        //   timeDiff,
+        //   "ms, window:",
+        //   deleteWindow,
+        //   "ms"
+        // );
 
-        if (timeDiff <= deleteWindow) {
+        // if (timeDiff <= deleteWindow) {
           message.isDeleted = true;
           message.text = "";
           message.media = [];
@@ -471,12 +471,12 @@ io.on("connection", async (socket) => {
             chatId: message.chatId,
             deleteForEveryone: true,
           });
-        } else {
-          console.log("Message too old to delete for everyone");
-          socket.emit("error", {
-            message: "Message can only be deleted within 2 minutes",
-          });
-        }
+        // } else {
+        //   console.log("Message too old to delete for everyone");
+        //   socket.emit("error", {
+        //     message: "Message can only be deleted within 2 minutes",
+        //   });
+        // }
       } else {
         // Delete for me only
         if (!message.deletedFor.includes(socket.userId)) {
