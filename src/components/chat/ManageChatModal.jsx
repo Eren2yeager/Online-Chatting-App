@@ -33,7 +33,7 @@ export default function ManageChatModal({
   const [editForm, setEditForm] = useState({
     name: chat?.name || "",
     description: chat?.description || "",
-    image: chat?.avatar || chat?.image || "",
+    image: chat?.image || chat?.image || "",
     privacy: chat?.privacy || "admin_only",
   });
   const [friends, setFriends] = useState([]);
@@ -69,6 +69,18 @@ export default function ManageChatModal({
     const items = list.map((p) => (typeof p === 'string' ? { _id: p } : p));
     return items.find((p) => (p?._id?.toString?.() || p?._id) !== currentUserId) || items[0] || null;
   }, [isGroup, chat?.participants, chat?.participantsDetailed, session?.user?.id]);
+
+  // Update editForm when chat data changes
+  useEffect(() => {
+    if (chat) {
+      setEditForm({
+        name: chat.name || "",
+        description: chat.description || "",
+        image: chat.image || "",
+        privacy: chat.privacy || "admin_only",
+      });
+    }
+  }, [chat]);
 
   useEffect(() => {
     if (isOpen) {
@@ -153,22 +165,43 @@ export default function ManageChatModal({
 
     try {
       setLoading(true);
+      setError("");
+      
+      // Upload image if changed
       let imageUrl = editForm.image;
       if (imageFile) {
-        imageUrl = await uploadImage(imageFile);
+        try {
+          imageUrl = await uploadImage(imageFile);
+        } catch (uploadError) {
+          console.error("Image upload failed:", uploadError);
+          showToast({ text: "Failed to upload image" });
+          setLoading(false);
+          return;
+        }
       }
-      const res = await fetch(`/api/chats/${chat._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...editForm, image: imageUrl }),
+
+      // Use socket event instead of API
+      const res = await emitAck("chat:update", {
+        chatId: chat._id,
+        name: editForm.name,
+        image: imageUrl,
+        description: editForm.description,
+        privacy: editForm.privacy,
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast({ text: "Chat settings saved" });
-        onUpdated?.(data.data);
-      } else throw new Error(data.error || "Save failed");
+
+      if (res?.success) {
+        showToast({ text: "Group settings updated successfully" });
+        setImageFile(null); // Clear the file after successful upload
+        onUpdated?.(res.chat);
+      } else {
+        const errorMsg = res?.error || "Failed to save settings";
+        showToast({ text: errorMsg });
+        setError(errorMsg);
+      }
     } catch (error) {
+      console.error("Save settings error:", error);
       showToast({ text: "Failed to save settings" });
+      setError("Failed to save settings");
     } finally {
       setLoading(false);
     }
@@ -354,6 +387,7 @@ export default function ManageChatModal({
                     handleImageChange={handleImageChange}
                     saveSettings={saveSettings}
                     loading={loading}
+                    error={error}
                     isAdmin={isAdmin}
                     isCreator={isCreator}
                     participants={participants}

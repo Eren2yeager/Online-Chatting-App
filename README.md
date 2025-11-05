@@ -205,7 +205,7 @@ online-chatting-app/
       "_id": "...",
       "name": "...",
       "email": "...",
-      "avatar": "...",
+      "image": "...",
       ...
     }
     ```

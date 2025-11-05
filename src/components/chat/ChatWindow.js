@@ -14,8 +14,8 @@ import {
   useSocketListener,
   useTypingIndicator,
 } from "../../lib/socket";
-import ChatMessage from "./ChatMessage";
-import ChatInput from "./ChatInput";
+import ChatMessage from "./ChatMessage.jsx";
+import ChatInput from "./ChatInput.jsx";
 import MessageContextMenu from "./MessageContextMenu";
 import ManageChatModal from "./ManageChatModal";
 import TypingIndicator from "./TypingIndicator";
@@ -24,7 +24,9 @@ import {
   fetchMessages as apiFetchMessages,
   markChatRead,
 } from "../../lib/client/messages";
-
+import { Avatar, Badge, Button, Spinner } from "@/components/ui";
+import { useToast } from "../layout/ToastContext";
+import { useUnreadCount } from "../layout/UnreadCountContext";
 /**
  * Chat window component for displaying and sending messages
  */
@@ -35,9 +37,11 @@ export default function ChatWindow({
   onChatUpdated,
 }) {
   const { data: session } = useSession();
-  const { socket, isConnected } = useSocket();
+  const { isConnected } = useSocket();
   const { emit, emitAck } = useSocketEmitter();
+  const { markChatAsRead } = useUnreadCount();
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -47,20 +51,28 @@ export default function ChatWindow({
     x: 0,
     y: 0,
   });
-  const [showActions, setShowActions] = useState(false);
   const [showManageGroup, setShowManageGroup] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [editMessage, setEditMessage] = useState(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
   const isAdmin = (chat?.admins || []).some((a) => a._id === session?.user?.id);
   const isCreator = chat?.createdBy?._id === session?.user?.id;
 
   const typingUsers = useTypingIndicator(chat._id);
-
+  const showToast = useToast();
   const router = useRouter();
 
   // --- Friendship and Block Logic ---
   // Only applies to 1:1 chats
-  const isOneToOne = useMemo(() => chat && !chat.isGroup && Array.isArray(chat.participants) && chat.participants.length === 2, [chat]);
+  const isOneToOne = useMemo(
+    () =>
+      chat &&
+      !chat.isGroup &&
+      Array.isArray(chat.participants) &&
+      chat.participants.length === 2,
+    [chat]
+  );
   const currentUserId = session?.user?.id;
 
   // Find the other participant (for 1:1)
@@ -78,17 +90,17 @@ export default function ChatWindow({
     if (!isOneToOne || !session?.user) return;
 
     // Fetch friends
-    fetch('/api/users/friends')
-      .then(res => res.json())
-      .then(data => {
+    fetch("/api/users/friends")
+      .then((res) => res.json())
+      .then((data) => {
         if (data.success) setFriends(data.data || []);
       })
       .catch(() => setFriends([]));
 
     // Fetch blocked users
-    fetch('/api/users/block')
-      .then(res => res.json())
-      .then(data => {
+    fetch("/api/users/block")
+      .then((res) => res.json())
+      .then((data) => {
         if (data.success) setBlocked(data.data || []);
       })
       .catch(() => setBlocked([]));
@@ -109,25 +121,63 @@ export default function ChatWindow({
     return blocked.some((b) => b._id === otherParticipant._id);
   }, [isOneToOne, otherParticipant, blocked]);
 
-  // Scroll to bottom when new messages arrive
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Scroll to bottom function
+  const scrollToBottom = (smooth = true) => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: smooth ? "smooth" : "auto",
+      });
+    }
   };
 
+  // Handle scroll detection
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } =
+      messagesContainerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    // Show button if user scrolled up more than 200px from bottom
+    setShowScrollButton(distanceFromBottom > 200);
+
+    // Track if user is manually scrolling
+    if (distanceFromBottom > 100) {
+      setIsUserScrolling(true);
+    } else {
+      setIsUserScrolling(false);
+    }
+  };
+
+  // Auto-scroll only when not manually scrolling or when typing indicator appears
   useEffect(() => {
-    scrollToBottom();
+    if (!isUserScrolling && messages.length > 0) {
+      scrollToBottom(true); // Changed to smooth scroll
+    }
+
     // Mark chat read whenever messages change
     if (messages.length > 0) {
       const lastId = messages[messages.length - 1]?._id;
       markChatRead({ chatId: chat._id, upToMessageId: lastId }).catch(() => {});
     }
-  }, [messages]);
+  }, [messages, isUserScrolling]);
 
-  // Fetch messages
+  // Auto-scroll when typing indicator appears/disappears
+  useEffect(() => {
+    if (!isUserScrolling && typingUsers.length > 0) {
+      // Smooth scroll to show typing indicator
+      setTimeout(() => scrollToBottom(true), 100);
+    }
+  }, [typingUsers.length, isUserScrolling]);
+
+  // Fetch messages and mark as read
   useEffect(() => {
     if (chat?._id) {
       fetchMessages();
+      // Mark chat as read when opened
+      markChatAsRead(chat._id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat._id]);
 
   // Socket event listeners
@@ -150,7 +200,6 @@ export default function ChatWindow({
       );
     }
   });
-
 
   useSocketListener("message:delete", (data) => {
     if (data.chatId === chat._id) {
@@ -218,8 +267,21 @@ export default function ChatWindow({
         limit: 50,
         before: beforeId || undefined,
       });
+
       if (beforeId) {
+        // Loading older messages - preserve scroll position
+        const container = messagesContainerRef.current;
+        const oldScrollHeight = container?.scrollHeight || 0;
+
         setMessages((prev) => [...data.data, ...prev]);
+
+        // Restore scroll position after new messages are added
+        setTimeout(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - oldScrollHeight;
+          }
+        }, 0);
       } else {
         setMessages(data.data);
       }
@@ -230,7 +292,6 @@ export default function ChatWindow({
       setLoading(false);
     }
   };
-
 
   // Promote a user to admin in a group chat
   const handlePromoteAdmin = async (userId) => {
@@ -260,15 +321,13 @@ export default function ChatWindow({
     }
   };
 
-
-  
   const handleSendMessage = async (text, media = [], replyToId = null) => {
     if (!isConnected) {
       console.error("Socket not connected, cannot perform action:");
       return;
     }
     if (!text.trim() && media.length === 0) return;
-    
+
     try {
       if (editMessage) {
         // Handle edit mode
@@ -292,13 +351,43 @@ export default function ChatWindow({
         });
         if (res?.success) {
           if (replyToMessage) setReplyToMessage(null);
-        }
-         else {
+        } else {
           console.error("Failed to send message:", res?.error);
         }
       }
     } catch (error) {
       console.error("Error sending message:", error);
+    }
+  };
+
+  // Handle message deletion with proper error handling and toast notifications
+  const handleDeleteMessage = async (message, deleteForEveryone = false) => {
+    if (!isConnected) {
+      showToast({ text: "Not connected to server" });
+      return;
+    }
+
+    try {
+      const res = await emitAck("message:delete", {
+        messageId: message._id,
+        deleteForEveryone,
+      });
+
+      if (res?.success) {
+        if (deleteForEveryone) {
+          showToast({ text: "Message deleted for everyone" });
+        } else {
+          showToast({ text: "Message deleted for you" });
+        }
+      } else {
+        // Show specific error message
+        const errorMsg = res?.error || "Failed to delete message";
+        showToast({ text: errorMsg });
+        console.error("Failed to delete message:", res?.error);
+      }
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      showToast({ text: "Failed to delete message" });
     }
   };
 
@@ -321,30 +410,10 @@ export default function ChatWindow({
         }
         break;
       case "delete":
-        try {
-          const res = await emitAck("message:delete", {
-            messageId: message._id,
-            deleteForEveryone: false,
-          });
-          if (!res?.success) {
-            console.error("Failed to delete message:", res?.error);
-          }
-        } catch (error) {
-          console.error("Error deleting message:", error);
-        }
+        await handleDeleteMessage(message, false);
         break;
       case "deleteForEveryone":
-        try {
-          const res = await emitAck("message:delete", {
-            messageId: message._id,
-            deleteForEveryone: true,
-          });
-          if (!res?.success) {
-            console.error("Failed to delete message for everyone:", res?.error);
-          }
-        } catch (error) {
-          console.error("Error deleting message for everyone:", error);
-        }
+        await handleDeleteMessage(message, true);
         break;
       case "reply":
         setReplyToMessage(message);
@@ -392,12 +461,12 @@ export default function ChatWindow({
 
   const getChatAvatar = () => {
     if (chat.isGroup) {
-      return chat.avatar || null;
+      return chat.image || null;
     } else {
       const otherParticipant = chat.participants?.find(
         (p) => p._id !== session?.user?.id
       );
-      return otherParticipant?.image || otherParticipant?.avatar || null;
+      return otherParticipant?.image || null;
     }
   };
 
@@ -414,116 +483,209 @@ export default function ChatWindow({
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 relative rounded-b-lg ">
-        <div className="flex items-center space-x-3">
+    <div className="flex flex-col h-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/30 relative overflow-hidden">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.05),transparent_50%),radial-gradient(circle_at_70%_80%,rgba(168,85,247,0.05),transparent_50%)] pointer-events-none"></div>
+      
+      {/* Modern Header with Gradient */}
+      <div className="flex items-center justify-between p-3 sm:p-4 border-b border-white/60 bg-gradient-to-r from-white/80 via-blue-50/50 to-purple-50/50 backdrop-blur-xl shadow-sm relative z-10">
+        <div className="flex items-center gap-3">
+          {/* Back Button */}
           <button
             onClick={onBack}
-            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+            className="md:hidden p-2 rounded-xl hover:bg-white/80 active:bg-white transition-all hover:shadow-sm"
           >
-            <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
+            <ArrowLeftIcon className="h-5 w-5 text-gray-700" />
           </button>
 
+          {/* Chat Info */}
           <div
-            className="flex items-center space-x-3 cursor-pointer"
-            onClick={() => {
-                setShowManageGroup(true);
-            }}
+            className="flex items-center gap-2 sm:gap-3 cursor-pointer group"
+            onClick={() => setShowManageGroup(true)}
           >
-            <div className="relative h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center ">
-              {getChatAvatar() ? (
-                <img
-                  src={getChatAvatar()}
-                  alt={getChatDisplayName()}
-                  className="h-full w-full object-cover rounded-full"
-                />
-              ) : (
-                <div className="h-6 w-6 text-gray-400">
-                  {chat.isGroup ? (
-                    <UserGroupIcon className="h-6 w-6 text-blue-400" />
-                  ) : (
-                    <UserIcon className="h-6 w-6 text-gray-400" />
-                  )}
-                </div>
-              )}
+            <div className="relative">
+              <Avatar
+                src={getChatAvatar()}
+                alt={getChatDisplayName()}
+                size="md"
+                fallback={
+                  chat.isGroup ? (
+                    <UserGroupIcon className="h-5 w-5" />
+                  ) : undefined
+                }
+                className="ring-2 ring-white shadow-md group-hover:ring-blue-300 transition-all group-hover:shadow-lg"
+              />
               {chat.isGroup && (
-                <div className="absolute bottom-0 right-0 h-5 w-5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                  <UserGroupIcon className="h-4 w-4 text-white" />
+                <div className="absolute -bottom-1 -right-1 h-6 w-6 sm:h-7 sm:w-7 bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 rounded-full flex items-center justify-center ring-2 ring-white shadow-lg">
+                  <UserGroupIcon className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
                 </div>
               )}
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors truncate">
                 {getChatDisplayName()}
               </h2>
               {chat.isGroup && (
-                <p className="text-xs text-gray-500">
-                  {chat.participants?.length || 0} members
-                </p>
+                <div className="flex items-center gap-2">
+                  <Badge variant="default" size="sm" className="bg-gradient-to-r from-blue-500 to-purple-500 text-white border-0">
+                    {chat.participants?.length || 0} members
+                  </Badge>
+                </div>
               )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages Area */}
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-2 sm:space-y-3 relative z-0 scroll-smooth"
+        style={{
+          backgroundImage: `
+            linear-gradient(to bottom, rgba(255,255,255,0.4), rgba(255,255,255,0.1)),
+            repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(59,130,246,0.02) 50px, rgba(59,130,246,0.02) 51px)
+          `,
+          scrollBehavior: 'smooth'
+        }}
+      >
         {loading && messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <div className="flex flex-col items-center justify-center h-full">
+            <Spinner size="lg" variant="primary" />
+            <p className="mt-4 text-gray-500 font-medium">
+              Loading messages...
+            </p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 flex items-center justify-center mb-4 shadow-lg ring-4 ring-white/50">
+              <svg
+                className="w-10 h-10 sm:w-12 sm:h-12 text-blue-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-gray-800 mb-2">
+              No messages yet
+            </h3>
+            <p className="text-xs sm:text-sm text-gray-600 text-center max-w-xs px-4">
+              {chat.isGroup
+                ? "Start the conversation by sending the first message to the group"
+                : "Send a message to start chatting"}
+            </p>
           </div>
         ) : (
           <>
             {hasMore && (
-              <button
-                onClick={() => fetchMessages(messages[0]?._id)}
-                className="w-full text-center text-sm text-blue-600 hover:text-blue-700 py-2"
-              >
-                Load more messages
-              </button>
+              <div className="flex justify-center mb-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => fetchMessages(messages[0]?._id)}
+                  disabled={loading}
+                  className="text-blue-600 hover:text-blue-700"
+                >
+                  {loading ? "Loading..." : "Load more messages"}
+                </Button>
+              </div>
             )}
 
-            <AnimatePresence>
-              {messages
-                .filter(
-                  (message) => !message.deletedFor?.includes(session?.user?.id)
-                )
-                .map((message) => (
-                  <motion.div
-                    key={message._id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <ChatMessage
-                      message={message}
-                      isOwn={message.sender._id === session?.user?.id}
-                      onContextMenu={(e) =>
-                        handleMessageContextMenu(e, message)
+            {messages
+              .filter(
+                (message) => !message.deletedFor?.includes(session?.user?.id)
+              )
+              .map((message) => (
+                <ChatMessage
+                  key={message._id}
+                  message={message}
+                  isOwn={message.sender._id === session?.user?.id}
+                  onReply={(msg) => setReplyToMessage(msg)}
+                  onEdit={(msg) => {
+                    setEditMessage(msg);
+                  }}
+                  onDelete={async (msg, deleteForEveryone) => {
+                    try {
+                      const res = await emitAck("message:delete", {
+                        messageId: msg._id,
+                        deleteForEveryone,
+                      });
+                      if (res?.success) {
+                        showToast({
+                          text: deleteForEveryone
+                            ? "Message deleted for everyone"
+                            : "Message deleted",
+                        });
                       }
-                    />
-                  </motion.div>
-                ))}
-            </AnimatePresence>
+                    } catch (error) {
+                      showToast({ text: "Failed to delete message" });
+                    }
+                  }}
+                  onReact={(emoji) => {
+                    emit("reaction:add", { messageId: message._id, emoji });
+                  }}
+                  showAvatar={
+                    !chat.isGroup || message.sender._id !== session?.user?.id
+                  }
+                />
+              ))}
 
             <div ref={messagesEndRef} />
-            
+
             {/* Typing Indicator */}
-            <TypingIndicator typingUsers={typingUsers} />
+            {typingUsers.length > 0 && (
+              <div>
+                <TypingIndicator typingUsers={typingUsers} />
+              </div>
+            )}
           </>
+        )}
+
+        {/* Scroll to Bottom Button */}
+        {showScrollButton && (
+          <button
+            onClick={() => {
+              scrollToBottom(true);
+              setIsUserScrolling(false);
+            }}
+            className="fixed bottom-20 sm:bottom-24 right-4 sm:right-8 z-20 p-2.5 sm:p-3 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110 ring-2 ring-white/50"
+            aria-label="Scroll to bottom"
+          >
+            <svg
+              className="w-5 h-5 sm:w-6 sm:h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+              />
+            </svg>
+          </button>
         )}
       </div>
 
-      {/* Input or Restriction Message */}
+      {/* Input Area with Gradient Shadow */}
       <div
-        className="border-t border-gray-200 rounded-t-lg p-2 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)]"
+        className="border-t border-white/60 bg-gradient-to-r from-white/90 via-blue-50/40 to-purple-50/40 backdrop-blur-xl p-3 shadow-[0_-8px_32px_-8px_rgba(59,130,246,0.15)] relative z-10"
         onContextMenu={() => setShowContextMenu(false)}
       >
         {chatInputRestrictionMessage ? (
-          <div className="text-center text-sm text-gray-500 py-4">
-            {chatInputRestrictionMessage}
+          <div className="text-center py-3 sm:py-4 px-4 sm:px-6 bg-gradient-to-r from-amber-50 via-orange-50 to-red-50 rounded-xl border border-amber-200/60 shadow-sm">
+            <p className="text-xs sm:text-sm text-gray-700 font-medium">
+              {chatInputRestrictionMessage}
+            </p>
           </div>
         ) : (
           <ChatInput
@@ -543,26 +705,31 @@ export default function ChatWindow({
         isOpen={showContextMenu}
         position={contextMenuPosition}
         onClose={() => setShowContextMenu(false)}
-        onAction={handleMessageAction}
         message={contextMenuMessage}
-        isOwnMessage={contextMenuMessage?.sender._id === session?.user?.id}
+        isOwn={contextMenuMessage?.sender._id === session?.user?.id}
+        onReply={(msg) => setReplyToMessage(msg)}
+        onEdit={(msg) => setEditMessage(msg)}
+        onDelete={handleDeleteMessage}
+        onReact={(emoji) => {
+          // Reaction handled in MessageContextMenu
+        }}
       />
 
-      {(
+      {
         <ManageChatModal
           isOpen={showManageGroup}
           onClose={() => setShowManageGroup(false)}
           chat={chat}
           isCreator={isCreator}
           isAdmin={isAdmin}
-          handlePromoteAdmin ={handlePromoteAdmin}
-          handleDemoteAdmin = {handleDemoteAdmin}
+          handlePromoteAdmin={handlePromoteAdmin}
+          handleDemoteAdmin={handleDemoteAdmin}
           onUpdated={(updatedChat) => {
             setShowManageGroup(false);
             onChatUpdated?.(updatedChat);
           }}
         />
-      )}
+      }
     </div>
   );
 }

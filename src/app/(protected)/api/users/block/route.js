@@ -30,7 +30,8 @@ export async function GET() {
 }
 
 // POST: Block a user
-export async function POST(request) {
+// Note: This is now handled by socket event 'user:block'
+export async function POST_DEPRECATED(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -57,7 +58,8 @@ export async function POST(request) {
 }
 
 // DELETE: Unblock a user
-export async function DELETE(request) {
+// Note: This is now handled by socket event 'user:unblock'
+export async function DELETE_DEPRECATED(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

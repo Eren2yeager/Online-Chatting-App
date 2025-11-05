@@ -41,7 +41,7 @@ export const chatCreateSchema = z.object({
 
 export const chatUpdateSchema = z.object({
   name: z.string().min(1).max(50).optional(),
-  avatar: z.string().url().optional(),
+  // image: z.string().url().optional(),
   image: z.string().url().optional(), // allow "image" alias from client
 });
 

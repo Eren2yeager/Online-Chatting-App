@@ -29,7 +29,14 @@ export async function GET() {
   }
 }
 
-export async function PUT(request) {
+/**
+ * PUT /api/users/profile
+ * Update user profile
+ * Note: This is now handled by socket event 'profile:update'
+ * Route removed - use socket events for real-time updates
+ */
+
+export async function PUT_DEPRECATED(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {

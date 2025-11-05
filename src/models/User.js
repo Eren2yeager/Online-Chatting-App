@@ -21,7 +21,7 @@ const UserSchema = new mongoose.Schema({
   // Primary profile image
   image: {
     type: String,
-    default: ''
+    default: '/user.jpg'
   },
   // Unique handle for friending and sharing
   handle: {

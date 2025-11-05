@@ -1,0 +1,68 @@
+{
+  "SUPPORTED_TYPES": {
+    "images": [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/svg+xml",
+      "image/bmp",
+      "image/x-icon",
+      "image/vnd.microsoft.icon"
+    ],
+    "videos": [
+      "video/mp4",
+      "video/webm",
+      "video/ogg",
+      "video/quicktime",
+      "video/x-msvideo",
+      "video/x-matroska",
+      "video/x-flv",
+      "video/x-ms-wmv"
+    ],
+    "audio": [
+      "audio/mpeg",
+      "audio/mp3",
+      "audio/wav",
+      "audio/ogg",
+      "audio/webm",
+      "audio/mp4",
+      "audio/x-m4a",
+      "audio/aac",
+      "audio/flac",
+      "audio/x-flac",
+      "audio/opus"
+    ],
+    "documents": [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "text/plain",
+      "text/csv",
+      "application/json",
+      "application/xml",
+      "text/xml",
+      "application/rtf",
+      "text/rtf"
+    ],
+    "archives": [
+      "application/zip",
+      "application/x-zip-compressed",
+      "application/x-rar-compressed",
+      "application/x-rar",
+      "application/vnd.rar",
+      "application/x-7z-compressed",
+      "application/x-tar",
+      "application/gzip",
+      "application/x-gzip",
+      "application/x-bzip2"
+    ]
+  },
+  "MAX_FILE_SIZE": 104857600,
+  "MAX_FILES": 50
+}

@@ -1,85 +1,67 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { memo } from "react";
 
 /**
- * Typing indicator styled like a chat message: only avatar and bouncing dots
+ * Typing indicator component showing who is typing
+ * Displays avatar and animated dots in a message bubble style
  */
 const TypingIndicator = memo(function TypingIndicator({ typingUsers = [] }) {
   if (!typingUsers || typingUsers.length === 0) return null;
 
-  // Show only the first user's avatar (like a chat message)
+  // Get typing user info
   const user = typingUsers[0];
-  const avatarUrl = user?.image || "/user.jpg";
-  const altText = user?.name || "User";
+  const avatarUrl = user?.image || "/default-avatar.png";
+  const userName = user?.name || "Someone";
+  const multipleUsers = typingUsers.length > 1;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="flex items-end mb-2"
-    >
+    <div className="flex items-end gap-2 mb-3 animate-fadeIn">
       {/* Avatar */}
-      <div className="flex-shrink-0 mr-2">
+      <div className="flex-shrink-0">
         <img
           src={avatarUrl}
-          alt={altText}
-          className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow"
+          alt={userName}
+          className="w-8 h-8 rounded-full object-cover ring-2 ring-white shadow-sm"
+          onError={(e) => {
+            e.target.src = "/default-avatar.png";
+          }}
         />
       </div>
-      {/* Message bubble with only bouncing dots */}
-      <div className="bg-gray-300  rounded-md px-4 py-3 shadow-sm min-w-[44px] flex items-center">
-        <div className="flex items-center space-x-1">
-          <motion.div
-            className="w-2 h-2 bg-gray-500 rounded-full"
-            animate={{
-              scale: [1, 1.3, 1],
-              opacity: [0.4, 1, 0.4],
-            }}
-            transition={{
-              duration: 1.2,
-              repeat: Infinity,
-              delay: 0,
-            }}
-          />
-          <motion.div
-            className="w-2 h-2 bg-gray-500 rounded-full"
-            animate={{
-              scale: [1, 1.3, 1],
-              opacity: [0.4, 1, 0.4],
-            }}
-            transition={{
-              duration: 1.2,
-              repeat: Infinity,
-              delay: 0.2,
-            }}
-          />
-          <motion.div
-            className="w-2 h-2 bg-gray-500 rounded-full"
-            animate={{
-              scale: [1, 1.3, 1],
-              opacity: [0.4, 1, 0.4],
-            }}
-            transition={{
-              duration: 1.2,
-              repeat: Infinity,
-              delay: 0.4,
-            }}
-          />
+
+      {/* Typing bubble */}
+      <div className="flex flex-col gap-1">
+        {/* User name(s) */}
+        <span className="text-xs text-gray-500 ml-1">
+          {multipleUsers 
+            ? `${userName} and ${typingUsers.length - 1} other${typingUsers.length > 2 ? 's' : ''} ${typingUsers.length > 2 ? 'are' : 'is'} typing...`
+            : `${userName} is typing...`
+          }
+        </span>
+
+        {/* Bubble with dots */}
+        <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 bg-gray-600 rounded-full animate-bounce [animation-delay:0ms]"></span>
+            <span className="w-2 h-2 bg-gray-600 rounded-full animate-bounce [animation-delay:150ms]"></span>
+            <span className="w-2 h-2 bg-gray-600 rounded-full animate-bounce [animation-delay:300ms]"></span>
+          </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }, (prevProps, nextProps) => {
-  // Only re-render if the number of typing users or their IDs change
+  // Only re-render if typing users change
   const prevUsers = prevProps.typingUsers || [];
   const nextUsers = nextProps.typingUsers || [];
+  
   if (prevUsers.length !== nextUsers.length) return false;
-  const prevIds = prevUsers.map(u => u._id || u.id).sort();
-  const nextIds = nextUsers.map(u => u._id || u.id).sort();
-  return prevIds.every((id, index) => id === nextIds[index]);
+  
+  // Compare user IDs
+  const prevIds = prevUsers.map(u => u._id || u.id).sort().join(',');
+  const nextIds = nextUsers.map(u => u._id || u.id).sort().join(',');
+  
+  return prevIds === nextIds;
 });
 
 export default TypingIndicator;

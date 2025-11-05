@@ -35,7 +35,14 @@ export async function GET() {
   }
 }
 
-export async function POST(request) {
+/**
+ * POST /api/friends/requests
+ * Send a friend request
+ * Note: This is now handled by socket event 'friend:request:create'
+ * Route removed - use socket events for real-time updates
+ */
+
+export async function POST_DEPRECATED(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) return unauthorized();

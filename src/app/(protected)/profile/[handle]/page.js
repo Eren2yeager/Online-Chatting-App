@@ -403,28 +403,51 @@ export default function ProfileByHandlePage() {
 
   const handleSave = async () => {
     if (relationship !== RELATIONSHIP.SELF) return;
+    
     try {
       setUploading(true);
+      
+      // Upload image if changed
       let imageUrl = editForm.image;
       if (imageFile) {
-        imageUrl = await uploadImage(imageFile);
+        try {
+          imageUrl = await uploadImage(imageFile);
+        } catch (uploadError) {
+          console.error("Image upload failed:", uploadError);
+          toast({ text: "Failed to upload image" });
+          setUploading(false);
+          return;
+        }
       }
-      const res = await fetch("/api/users/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...editForm, image: imageUrl }),
+      
+      // Use socket event instead of API
+      const res = await emitAck("profile:update", {
+        name: editForm.name,
+        bio: editForm.bio,
+        image: imageUrl,
       });
-      if (res.ok) {
-        const updatedUser = await res.json();
-        setUser(updatedUser);
+      
+      if (res?.success) {
+        // Update local state with new data
+        setUser({
+          ...user,
+          name: editForm.name,
+          bio: editForm.bio,
+          image: imageUrl,
+        });
         setIsEditing(false);
         setImageFile(null);
-        toast({text :"Profile updated successfully"});
+        toast({ text: "Profile updated successfully" });
+        
+        // Refresh user data
+        await fetchUserByHandle();
       } else {
-        toast({ text :"Failed to update profile"});
+        const errorMsg = res?.error || "Failed to update profile";
+        toast({ text: errorMsg });
       }
     } catch (error) {
-      toast({ text :"Failed to update profile"});
+      console.error("Profile update error:", error);
+      toast({ text: "Failed to update profile" });
     } finally {
       setUploading(false);
     }

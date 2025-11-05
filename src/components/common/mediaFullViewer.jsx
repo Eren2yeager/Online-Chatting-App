@@ -2,23 +2,113 @@
 import React, { memo, useState,  useEffect, useRef  } from 'react';
 import { useMediaFullView } from '@/components/layout/mediaFullViewContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DocumentIcon, PlayIcon, PhotoIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
-  import { HiOutlineDocumentText, HiOutlineSpeakerWave } from "react-icons/hi2";
-  import { HiOutlineDownload } from "react-icons/hi";
-  import { HiOutlinePlay } from "react-icons/hi2";
-// Helper to determine media type
-function getMediaType(media) {
-  if (!media?.type && media?.url) {
-    // fallback: guess from url
-    if (media.url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return 'image';
-    if (media.url.match(/\.(mp4|webm|mov)$/i)) return 'video';
-    if (media.url.match(/\.(mp3|wav|ogg)$/i)) return 'audio';
-    return 'document';
+import { PlayIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
+import { HiOutlineSpeakerWave } from "react-icons/hi2";
+import { HiOutlineDownload } from "react-icons/hi";
+
+// File Info Display Component (for non-media files)
+const FileInfoDisplay = ({ media, onDownload }) => {
+  return (
+    <div className="flex flex-col items-center w-full">
+      {/* File icon based on type */}
+      <div className="text-8xl mb-4">{getFileIcon(media)}</div>
+      <div className="text-white text-xl font-semibold mb-2 text-center px-4">
+        {media.filename || media.url?.split('/').pop() || 'File'}
+      </div>
+      {media.size && (
+        <div className="text-gray-400 text-sm mb-4">
+          {(media.size / 1024 / 1024).toFixed(2)} MB
+        </div>
+      )}
+      <button
+        onClick={onDownload}
+        className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition shadow-lg"
+      >
+        <HiOutlineDownload className="w-5 h-5" />
+        Download
+      </button>
+      {/* File info */}
+      <div className="mt-6 bg-zinc-800/50 rounded-lg p-4 w-full max-w-md">
+        <div className="text-gray-300 text-sm space-y-2">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Type:</span>
+            <span className="font-medium">{media.mime || media.type || 'Unknown'}</span>
+          </div>
+          {media.size && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Size:</span>
+              <span className="font-medium">{(media.size / 1024).toFixed(2)} KB</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper to download file properly
+async function downloadFile(media) {
+  try {
+    const response = await fetch(media.url);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = media.filename || 'download';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Download failed:', error);
+    // Fallback: open in new tab
+    window.open(media.url, '_blank');
   }
-  if (media?.type?.startsWith('image/')) return 'image';
-  if (media?.type?.startsWith('video/')) return 'video';
-  if (media?.type?.startsWith('audio/')) return 'audio';
-  return 'document';
+}
+
+// Helper to determine media type (only image, video, audio, or other)
+function getMediaType(media) {
+  const mime = media?.mime || media?.type || '';
+  const url = media?.url || '';
+  
+  // Check MIME type first
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  
+  // Check URL/filename extension
+  if (url.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i)) return 'image';
+  if (url.match(/\.(mp4|webm|mov|avi|mkv)$/i)) return 'video';
+  if (url.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/i)) return 'audio';
+  
+  // Everything else is just a file
+  return 'file';
+}
+
+// Helper to get file icon based on type
+function getFileIcon(media) {
+  const mime = media?.mime || media?.type || '';
+  const filename = media?.filename || '';
+  
+  if (mime === 'application/pdf' || filename.toLowerCase().endsWith('.pdf')) {
+    return '📄';
+  }
+  if (mime.includes('word') || filename.match(/\.(doc|docx)$/i)) {
+    return '📝';
+  }
+  if (mime.includes('excel') || mime.includes('spreadsheet') || filename.match(/\.(xls|xlsx)$/i)) {
+    return '📊';
+  }
+  if (mime.includes('powerpoint') || mime.includes('presentation') || filename.match(/\.(ppt|pptx)$/i)) {
+    return '📊';
+  }
+  if (mime.includes('zip') || mime.includes('compressed') || filename.match(/\.(zip|rar|7z)$/i)) {
+    return '🗜️';
+  }
+  if (mime.includes('text') || filename.match(/\.(txt|md)$/i)) {
+    return '📃';
+  }
+  return '📁';
 }
 
 const MediaGalleryDialog = ({ mediaArray, onSelect, onClose }) => (
@@ -67,12 +157,12 @@ const MediaGalleryDialog = ({ mediaArray, onSelect, onClose }) => (
               ) : type === 'audio' ? (
                 <div className="flex flex-col items-center justify-center h-full text-white">
                   <SpeakerWaveIcon className="w-10 h-10 mb-2 opacity-80" />
-                  <span className="text-xs">{media.filename || 'Audio'}</span>
+                  <span className="text-xs truncate px-2">{media.filename || 'Audio'}</span>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-white">
-                  <DocumentIcon className="w-10 h-10 mb-2 opacity-80" />
-                  <span className="text-xs">{media.filename || 'Document'}</span>
+                <div className="flex flex-col items-center justify-center h-full text-white bg-gradient-to-br from-gray-800/40 to-gray-700/40">
+                  <div className="text-5xl mb-2">{getFileIcon(media)}</div>
+                  <span className="text-xs truncate px-2">{media.filename || 'File'}</span>
                 </div>
               )}
               <div className="absolute bottom-0 left-0 right-0 bg-black/40 text-xs text-white px-2 py-1 truncate">
@@ -128,8 +218,16 @@ const MediaFullDialog = ({ media, onClose, onPrev, onNext, hasPrev, hasNext }) =
           minWidth: "0",
         }}
       >
-        {/* Close button row */}
-        <div className="flex items-center justify-end w-full px-2 sm:px-4 pt-3 pb-1">
+        {/* Header with download and close buttons */}
+        <div className="flex items-center justify-between w-full px-2 sm:px-4 pt-3 pb-1">
+          <button
+            onClick={() => downloadFile(media)}
+            className="flex items-center px-3 py-1 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition text-sm"
+            aria-label="Download"
+          >
+            <HiOutlineDownload className="w-4 h-4 mr-1" />
+            <span className="hidden sm:inline">Download</span>
+          </button>
           <button
             onClick={onClose}
             className="flex items-center px-3 py-1 rounded-lg font-bold text-white bg-black/40 hover:bg-red-500 transition text-lg"
@@ -188,7 +286,6 @@ const MediaFullDialog = ({ media, onClose, onPrev, onNext, hasPrev, hasNext }) =
           {type === 'audio' && (
             <div className="flex flex-col justify-center items-center w-full">
               <div className="flex flex-col items-center justify-center mb-4">
-                {/* HiOutlineSpeakerWave for audio icon */}
                 <HiOutlineSpeakerWave className="w-16 h-16 text-blue-400 mb-2" />
                 <div className="text-white text-lg font-semibold mb-1 text-center">
                   {media.filename || media.url?.split('/').pop() || 'Audio'}
@@ -204,32 +301,8 @@ const MediaFullDialog = ({ media, onClose, onPrev, onNext, hasPrev, hasNext }) =
               </audio>
             </div>
           )}
-          {type === 'document' && (
-            <div className="flex flex-col items-center w-full">
-              {/* HiOutlineDocumentText for document icon */}
-              <HiOutlineDocumentText className="w-20 h-20 text-purple-400 mb-3" />
-              <div className="text-white text-lg font-semibold mb-2 text-center break-all">
-                {media.filename || media.url?.split('/').pop() || 'Document'}
-              </div>
-              <a
-                href={media.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition mb-2"
-                download={media.filename}
-              >
-                <HiOutlineDownload className="w-5 h-5" />
-                Download
-              </a>
-              <a
-                href={media.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-300 underline text-sm break-all"
-              >
-                Open in new tab
-              </a>
-            </div>
+          {type === 'file' && (
+            <FileInfoDisplay media={media} onDownload={() => downloadFile(media)} />
           )}
         </div>
         {/* Navigation and hint row */}
@@ -270,11 +343,8 @@ const MediaFullViewer = () => {
 
   const [selectedIndex, setSelectedIndex] = useState(null);
 
-  // Always define mediaArray and initialIndex, even if mediaToView is null
+  // Always define mediaArray, even if mediaToView is null
   const mediaArray = (mediaToView && Array.isArray(mediaToView.media)) ? mediaToView.media : [];
-  const initialIndex = (mediaToView && typeof mediaToView.initialIndex === 'number')
-    ? mediaToView.initialIndex
-    : 0;
 
   // If only one media, open full dialog directly
   const showGallery = mediaArray.length > 1 && selectedIndex === null;
@@ -328,7 +398,7 @@ const MediaFullViewer = () => {
         <MediaGalleryDialog
           key="gallery"
           mediaArray={mediaArray}
-          onSelect={handleSelect}z
+          onSelect={handleSelect}
           onClose={handleClose}
         />
       )}

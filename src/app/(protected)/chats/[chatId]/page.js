@@ -16,9 +16,9 @@ import {
 } from '@heroicons/react/24/outline';
 import ChatSidebar from '../../../../components/chat/ChatSidebar';
 import ChatWindow from '../../../../components/chat/ChatWindow';
-import CreateGroupModal from '../../../../components/chat/CreateGroupModal';
-import FriendRequestsModal from '../../../../components/chat/FriendRequestsModal';
-import { useSearchParams } from 'next/navigation';
+import CreateGroupModal from '../../../../components/chat/CreateGroupModal.jsx';
+import FriendRequestsModal from '../../../../components/chat/FriendRequestsModal.jsx';
+import { useSocket } from '@/lib/socket';
 
 /**
  * Individual chat page with responsive layout
@@ -27,6 +27,7 @@ import { useSearchParams } from 'next/navigation';
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { socket, isConnected } = useSocket();
   const {chatId} = useParams()
   // const chatId = c;
   const [selectedChat, setSelectedChat] = useState(null);
@@ -45,8 +46,12 @@ export default function ChatPage() {
       return;
     }
 
-    fetchChats();
-  }, [session, status]);
+    // Only fetch if chats are empty
+    if (chats.length === 0) {
+      fetchChats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, status]);
 
   useEffect(() => {
     if (chatId && chats.length > 0) {
@@ -114,6 +119,154 @@ export default function ChatPage() {
       )
     );
   };
+
+  // Socket listeners for real-time chat updates
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    // Listen for new messages to update lastMessage in sidebar
+    const handleMessageNew = (data) => {
+      const { message, chatId: msgChatId } = data;
+      
+      console.log("📨 New message received:", { message, chatId: msgChatId });
+      
+      setChats((prevChats) => {
+        // Find the chat
+        const chatIndex = prevChats.findIndex((c) => c._id === msgChatId);
+        
+        if (chatIndex === -1) {
+          // Chat not in list, might be a new chat - ignore for now
+          // It will be added via chat:created event if needed
+          console.log("⚠️ Chat not found in list, ignoring...");
+          return prevChats;
+        }
+
+        // Update the chat with new lastMessage and move to top
+        const updatedChats = [...prevChats];
+        const chat = { ...updatedChats[chatIndex] };
+        
+        // Update lastMessage with proper structure
+        chat.lastMessage = {
+          _id: message._id,
+          text: message.text || "",
+          sender: message.sender,
+          media: message.media || [],
+          type: message.type || "text",
+          isDeleted: message.isDeleted || false,
+          createdAt: message.createdAt || new Date().toISOString(),
+        };
+        chat.lastActivity = message.createdAt || new Date().toISOString();
+        
+        console.log("✅ Updated chat lastMessage:", chat.lastMessage);
+        
+        // Remove from current position and add to top
+        updatedChats.splice(chatIndex, 1);
+        updatedChats.unshift(chat);
+        
+        return updatedChats;
+      });
+    };
+
+    // Listen for message edits
+    const handleMessageEdit = (data) => {
+      const { message, chatId: msgChatId } = data;
+      
+      setChats((prevChats) =>
+        prevChats.map((chat) => {
+          if (chat._id === msgChatId && chat.lastMessage?._id === message._id) {
+            return {
+              ...chat,
+              lastMessage: message,
+            };
+          }
+          return chat;
+        })
+      );
+    };
+
+    // Listen for message deletes
+    const handleMessageDelete = (data) => {
+      const { messageId, chatId: msgChatId, deleteForEveryone } = data;
+      
+      if (deleteForEveryone) {
+        setChats((prevChats) =>
+          prevChats.map((chat) => {
+            if (chat._id === msgChatId && chat.lastMessage?._id === messageId) {
+              return {
+                ...chat,
+                lastMessage: {
+                  ...chat.lastMessage,
+                  isDeleted: true,
+                  text: "",
+                  media: [],
+                },
+              };
+            }
+            return chat;
+          })
+        );
+      }
+    };
+
+    // Listen for chat updates (name, image, participants)
+    const handleChatUpdated = (data) => {
+      const { chat: updatedChat } = data;
+      
+      setChats((prevChats) =>
+        prevChats.map((chat) =>
+          chat._id === updatedChat._id ? { ...chat, ...updatedChat } : chat
+        )
+      );
+
+      // Update selected chat if it's the one that was updated
+      if (selectedChat?._id === updatedChat._id) {
+        setSelectedChat({ ...selectedChat, ...updatedChat });
+      }
+    };
+
+    // Listen for new chats (when added to a group)
+    const handleChatCreated = (data) => {
+      const { chat: newChat } = data;
+      
+      setChats((prevChats) => {
+        // Check if chat already exists
+        if (prevChats.some((c) => c._id === newChat._id)) {
+          return prevChats;
+        }
+        return [newChat, ...prevChats];
+      });
+    };
+
+    // Listen for chat left/removed
+    const handleChatLeft = (data) => {
+      const { chatId: leftChatId } = data;
+      
+      setChats((prevChats) => prevChats.filter((chat) => chat._id !== leftChatId));
+      
+      // If the current chat was left, redirect to chats page
+      if (selectedChat?._id === leftChatId) {
+        router.push('/chats');
+      }
+    };
+
+    // Register all socket listeners
+    socket.on("message:new", handleMessageNew);
+    socket.on("message:edit", handleMessageEdit);
+    socket.on("message:delete", handleMessageDelete);
+    socket.on("chat:updated", handleChatUpdated);
+    socket.on("chat:created", handleChatCreated);
+    socket.on("chat:left", handleChatLeft);
+
+    // Cleanup
+    return () => {
+      socket.off("message:new", handleMessageNew);
+      socket.off("message:edit", handleMessageEdit);
+      socket.off("message:delete", handleMessageDelete);
+      socket.off("chat:updated", handleChatUpdated);
+      socket.off("chat:created", handleChatCreated);
+      socket.off("chat:left", handleChatLeft);
+    };
+  }, [socket, isConnected, selectedChat, router]);
 
   const filteredChats = chats.filter(chat => {
     if (!searchQuery) return true;

@@ -59,4 +59,7 @@ NotificationSchema.index({ to: 1, read: 1 });
 NotificationSchema.index({ to: 1, createdAt: -1 });
 NotificationSchema.index({ type: 1 });
 
+// TTL index: Auto-delete notifications older than 30 days
+NotificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
+
 export default mongoose.models.Notification || mongoose.model('Notification', NotificationSchema);

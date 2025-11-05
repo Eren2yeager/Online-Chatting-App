@@ -1,7 +1,7 @@
 # 🚀 Online Chatting App - Complete Project Structure
 
 ## 📋 **PROJECT OVERVIEW**
-A feature-rich, real-time chatting application inspired by Line/WhatsApp built with Next.js, featuring secure authentication, real-time messaging, media sharing, group chats, and mobile-responsive design.
+A feature-rich, real-time chatting application inspired  built with Next.js, featuring secure authentication, real-time messaging, media sharing, group chats, and mobile-responsive design.
 
 ---
 
@@ -31,82 +31,150 @@ A feature-rich, real-time chatting application inspired by Line/WhatsApp built w
 
 ```
 online-chatting-app/
-├── 📁 src/
-│   ├── 📁 app/
-│   │   ├── 📁 api/
-│   │   │   ├── 📁 auth/
-│   │   │   │   └── [...nextauth]/
-│   │   │   │       └── route.js ✅
-│   │   │   ├── 📁 conversations/
-│   │   │   │   ├── route.js ✅
-│   │   │   │   └── [conversationId]/
-│   │   │   │       └── messages/
-│   │   │   │           └── route.js ✅
-│   │   │   ├── 📁 messages/
-│   │   │   │   └── [messageId]/
-│   │   │   │       └── route.js ✅
-│   │   │   ├── 📁 users/
-│   │   │   │   └── route.js ✅
-│   │   │   ├── 📁 upload/
-│   │   │   │   └── route.js ✅
-│   │   │   ├── 📁 friend-requests/
-│   │   │   │   ├── route.js ✅
-│   │   │   │   └── count/
-│   │   │   │       └── route.js ✅
-│   │   │   │   └── [requestId]/
-│   │   │   │       ├── accept/
-│   │   │   │       │   └── route.js ✅
-│   │   │   │       └── reject/
-│   │   │   │           └── route.js ✅
-│   │   ├── 📁 auth/
-│   │   │   └── signin/
-│   │   │       └── page.js ✅
-│   │   ├── 📁 chat/
-│   │   │   └── page.js ✅
-│   │   ├── layout.js ✅
-│   │   └── page.js ✅
-│   ├── 📁 components/
-│   │   ├── 📁 auth/
-│   │   │   └── SignInButton.js ✅
-│   │   ├── 📁 chat/
-│   │   │   ├── ChatInput.js ✅
-│   │   │   ├── ChatMessage.js ✅
-│   │   │   ├── ChatSidebar.js ✅
-│   │   │   ├── ChatWindow.js ✅
-│   │   │   ├── QRCodeModal.js ✅
-│   │   │   ├── UserProfile.js ✅
-│   │   │   ├── CreateGroupModal.js ✅
-│   │   │   ├── FriendRequestsModal.js ✅
-│   │   │   └── MessageContextMenu.js ✅
-│   │   ├── 📁 layout/
-│   │   │   └── SecureLayout.js ✅
-│   │   └── 📁 providers/
-│   │       ├── SessionProvider.js ✅
-│   │       └── SocketProvider.js ✅
-│   ├── 📁 lib/
-│   │   ├── auth.js ✅
-│   │   ├── mongodb.js ✅
-│   │   ├── mongodb-client.js ✅
-│   │   ├── cloudinary.js ✅
-│   │   └── socket.js ✅
-│   └── 📁 models/
-│       ├── User.js ✅
-│       ├── Conversation.js ✅
-│       └── Message.js ✅
-├── 📁 public/
-│   └── default-avatar.png ✅
-├── server.js ✅
-├── package.json ✅
-├── next.config.mjs ✅
-├── tailwind.config.js ✅
-├── postcss.config.mjs ✅
-├── eslint.config.mjs ✅
-├── jsconfig.json ✅
-├── .env.local ✅
-├── .gitignore ✅
-├── README.md ✅
-├── MONGODB_SETUP.md ✅
-└── PROJECT_STRUCTURE.md ✅
+├── .gitignore
+├── PROJECT_STRUCTURE.md
+├── README.md
+├── eslint.config.mjs
+├── jsconfig.json
+├── middleware.js
+├── next.config.mjs
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── public
+    ├── file.svg
+    ├── globe.svg
+    ├── next.svg
+    ├── user.jpg
+    ├── vercel.svg
+    └── window.svg
+├── server
+    └── socket-server.js
+└── src
+    ├── app
+        ├── (protected)
+        │   ├── api
+        │   │   ├── auth
+        │   │   │   └── [...nextauth]
+        │   │   │   │   └── route.js
+        │   │   ├── chats
+        │   │   │   ├── [chatId]
+        │   │   │   │   ├── admins
+        │   │   │   │   │   └── route.js
+        │   │   │   │   ├── links
+        │   │   │   │   │   └── route.js
+        │   │   │   │   ├── media
+        │   │   │   │   │   └── route.js
+        │   │   │   │   ├── members
+        │   │   │   │   │   └── route.js
+        │   │   │   │   ├── read
+        │   │   │   │   │   └── route.js
+        │   │   │   │   └── route.js
+        │   │   │   └── route.js
+        │   │   ├── friends
+        │   │   │   ├── requests
+        │   │   │   │   ├── [requestId]
+        │   │   │   │   │   └── route.js
+        │   │   │   │   ├── count
+        │   │   │   │   │   └── route.js
+        │   │   │   │   └── route.js
+        │   │   │   └── search
+        │   │   │   │   └── route.js
+        │   │   ├── messages
+        │   │   │   ├── [messageId]
+        │   │   │   │   ├── reactions
+        │   │   │   │   │   └── route.js
+        │   │   │   │   └── route.js
+        │   │   │   └── route.js
+        │   │   ├── upload
+        │   │   │   └── route.js
+        │   │   └── users
+        │   │   │   ├── [id]
+        │   │   │       └── route.js
+        │   │   │   ├── block
+        │   │   │       └── route.js
+        │   │   │   ├── by-handle
+        │   │   │       └── [handle]
+        │   │   │       │   └── route.js
+        │   │   │   ├── friends
+        │   │   │       ├── [friendId]
+        │   │   │       │   └── route.js
+        │   │   │       └── route.js
+        │   │   │   ├── profile
+        │   │   │       └── route.js
+        │   │   │   └── route.js
+        │   ├── chats
+        │   │   ├── [chatId]
+        │   │   │   └── page.js
+        │   │   └── page.js
+        │   ├── friends
+        │   │   └── page.js
+        │   ├── invite
+        │   │   ├── [handle]
+        │   │   │   └── page.js
+        │   │   └── page.js
+        │   ├── layout.js
+        │   └── profile
+        │   │   ├── [handle]
+        │   │       └── page.js
+        │   │   └── page.js
+        ├── favicon.ico
+        ├── globals.css
+        ├── layout.js
+        ├── page.js
+        └── signin
+        │   └── page.js
+    ├── components
+        ├── auth
+        │   └── SignInButton.js
+        ├── chat
+        │   ├── ChatInput.js
+        │   ├── ChatMessage.js
+        │   ├── ChatSidebar.js
+        │   ├── ChatWindow.js
+        │   ├── CreateGroupModal.js
+        │   ├── FriendRequestsModal.js
+        │   ├── ManageChatModal.jsx
+        │   ├── MessageContextMenu.js
+        │   ├── TypingIndicator.js
+        │   └── chatSpareParts
+        │   │   ├── linksTab.js
+        │   │   ├── mediaTab.js
+        │   │   ├── membersTab.js
+        │   │   └── overviewTab.js
+        ├── common
+        │   ├── EmojiPicker.jsx
+        │   └── mediaFullViewer.jsx
+        ├── layout
+        │   ├── Navigation.js
+        │   ├── NavigationContext.js
+        │   ├── SecureLayout.js
+        │   ├── ToastContext.js
+        │   ├── header.jsx
+        │   └── mediaFullViewContext.js
+        └── providers
+        │   └── SessionProvider.js
+    ├── functions
+        └── dateFormattor.js
+    ├── lib
+        ├── api-helpers.js
+        ├── auth.js
+        ├── client
+        │   ├── api.js
+        │   └── messages.js
+        ├── cloudinary.js
+        ├── mongodb-client.js
+        ├── mongodb.js
+        ├── rateLimit.js
+        ├── socket.js
+        └── validators.js
+    └── models
+        ├── Chat.js
+        ├── FriendRequest.js
+        ├── Message.js
+        ├── Notification.js
+        └── User.js
+
 ```
 
 ---

@@ -13,7 +13,6 @@ import {
   BellIcon,
   UserIcon
 } from '@heroicons/react/24/outline';
-import toast from 'react-hot-toast';
 import { useToast } from '@/components/layout/ToastContext';
 import { useSocketEmitter, useSocket } from '@/lib/socket';
 
@@ -361,8 +360,8 @@ export default function FriendsPage() {
               </div>
             ) : (
               <ul className="divide-y divide-gray-200">
-                {filteredFriends.map((friend) => (
-                  <li key={friend._id} className="p-4 sm:p-6">
+                {filteredFriends.map((friend , idx) => (
+                  <li key={idx} className="p-4 sm:p-6">
                     <div className="flex flex-col md:flex-row gap-2 justify-between">
                       <div className="flex items-center space-x-4">
                         <div className="relative h-12 w-12 cursor-pointer" onClick={() => navigateToProfile(friend.handle)}>

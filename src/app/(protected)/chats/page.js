@@ -10,8 +10,9 @@ import {
   UserIcon,
 } from "@heroicons/react/24/outline";
 import ChatSidebar from "../../../components/chat/ChatSidebar";
-import CreateGroupModal from "../../../components/chat/CreateGroupModal";
-import FriendRequestsModal from "../../../components/chat/FriendRequestsModal";
+import CreateGroupModal from "../../../components/chat/CreateGroupModal.jsx";
+import FriendRequestsModal from "../../../components/chat/FriendRequestsModal.jsx";
+import { useSocket } from "@/lib/socket";
 
 /**
  * Main chats page - shows sidebar and a placeholder for selected chat on desktop, sidebar only on mobile
@@ -19,6 +20,7 @@ import FriendRequestsModal from "../../../components/chat/FriendRequestsModal";
 export default function ChatsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { socket, isConnected } = useSocket();
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -26,15 +28,19 @@ export default function ChatsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [friendRequestCount, setFriendRequestCount] = useState(0);
 
-  // Fetch chats on mount or when session changes
+  // Fetch chats on mount ONLY (not on every session change)
   useEffect(() => {
     if (status === "loading") return;
     if (!session) {
       router.push("/signin");
       return;
     }
-    fetchChats();
-  }, [session, status]);
+    // Only fetch if chats are empty
+    if (chats.length === 0) {
+      fetchChats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, status]);
 
   // Handle ?friend=... param to start chat
   useEffect(() => {
@@ -67,7 +73,7 @@ export default function ChatsPage() {
       setLoading(true);
       const response = await fetch("/api/chats");
       const data = await response.json();
-      console.log(data)
+      console.log(data);
       if (data.success && Array.isArray(data.data.chats)) {
         setChats(data.data.chats);
       } else {
@@ -146,21 +152,168 @@ export default function ChatsPage() {
     );
   };
 
-  const filteredChats = chats && Array.isArray(chats) ? chats.filter((chat) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    if (chat.isGroup) {
-      return chat.name?.toLowerCase().includes(query);
-    } else {
-      const otherParticipant = chat.participants.find(
-        (p) => p._id !== session?.user?.id
+  // Socket listeners for real-time chat updates
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    // Listen for new messages to update lastMessage in sidebar
+    const handleMessageNew = (data) => {
+      const { message, chatId } = data;
+      
+      console.log("📨 New message received:");
+      console.log("  - chatId:", chatId);
+      console.log("  - message._id:", message._id);
+      console.log("  - message.text:", message.text);
+      console.log("  - message.sender:", message.sender);
+      console.log("  - message.sender.name:", message.sender?.name);
+      console.log("  - message.sender._id:", message.sender?._id);
+
+      setChats((prevChats) => {
+        // Find the chat
+        const chatIndex = prevChats.findIndex((c) => c._id === chatId);
+
+        if (chatIndex === -1) {
+          // Chat not in list, might be a new chat - ignore for now
+          // It will be added via chat:created event if needed
+          console.log("⚠️ Chat not found in list, ignoring...");
+          return prevChats;
+        }
+
+        // Update the chat with new lastMessage and move to top
+        const updatedChats = [...prevChats];
+        const chat = { ...updatedChats[chatIndex] };
+
+        // Update lastMessage with proper structure
+        chat.lastMessage = {
+          _id: message._id,
+          text: message.text || "",
+          sender: message.sender,
+          media: message.media || [],
+          type: message.type || "text",
+          isDeleted: message.isDeleted || false,
+          createdAt: message.createdAt || new Date().toISOString(),
+        };
+        chat.lastActivity = message.createdAt || new Date().toISOString();
+
+        console.log("✅ Updated chat lastMessage:", chat.lastMessage);
+
+        // Remove from current position and add to top
+        updatedChats.splice(chatIndex, 1);
+        updatedChats.unshift(chat);
+
+        return updatedChats;
+      });
+    };
+
+    // Listen for message edits
+    const handleMessageEdit = (data) => {
+      const { message, chatId } = data;
+
+      setChats((prevChats) =>
+        prevChats.map((chat) => {
+          if (chat._id === chatId && chat.lastMessage?._id === message._id) {
+            return {
+              ...chat,
+              lastMessage: message,
+            };
+          }
+          return chat;
+        })
       );
-      return (
-        otherParticipant?.name?.toLowerCase().includes(query) ||
-        otherParticipant?.handle?.toLowerCase().includes(query)
+    };
+
+    // Listen for message deletes
+    const handleMessageDelete = (data) => {
+      const { messageId, chatId, deleteForEveryone } = data;
+
+      if (deleteForEveryone) {
+        setChats((prevChats) =>
+          prevChats.map((chat) => {
+            if (chat._id === chatId && chat.lastMessage?._id === messageId) {
+              return {
+                ...chat,
+                lastMessage: {
+                  ...chat.lastMessage,
+                  isDeleted: true,
+                  text: "",
+                  media: [],
+                },
+              };
+            }
+            return chat;
+          })
+        );
+      }
+    };
+
+    // Listen for chat updates (name, image, participants)
+    const handleChatUpdated = (data) => {
+      const { chat: updatedChat } = data;
+
+      setChats((prevChats) =>
+        prevChats.map((chat) =>
+          chat._id === updatedChat._id ? { ...chat, ...updatedChat } : chat
+        )
       );
-    }
-  }) : [];
+    };
+
+    // Listen for new chats (when added to a group)
+    const handleChatCreated = (data) => {
+      const { chat: newChat } = data;
+
+      setChats((prevChats) => {
+        // Check if chat already exists
+        if (prevChats.some((c) => c._id === newChat._id)) {
+          return prevChats;
+        }
+        return [newChat, ...prevChats];
+      });
+    };
+
+    // Listen for chat left/removed
+    const handleChatLeft = (data) => {
+      const { chatId } = data;
+
+      setChats((prevChats) => prevChats.filter((chat) => chat._id !== chatId));
+    };
+
+    // Register all socket listeners
+    socket.on("message:new", handleMessageNew);
+    socket.on("message:edit", handleMessageEdit);
+    socket.on("message:delete", handleMessageDelete);
+    socket.on("chat:updated", handleChatUpdated);
+    socket.on("chat:created", handleChatCreated);
+    socket.on("chat:left", handleChatLeft);
+
+    // Cleanup
+    return () => {
+      socket.off("message:new", handleMessageNew);
+      socket.off("message:edit", handleMessageEdit);
+      socket.off("message:delete", handleMessageDelete);
+      socket.off("chat:updated", handleChatUpdated);
+      socket.off("chat:created", handleChatCreated);
+      socket.off("chat:left", handleChatLeft);
+    };
+  }, [socket, isConnected]);
+
+  const filteredChats =
+    chats && Array.isArray(chats)
+      ? chats.filter((chat) => {
+          if (!searchQuery) return true;
+          const query = searchQuery.toLowerCase();
+          if (chat.isGroup) {
+            return chat.name?.toLowerCase().includes(query);
+          } else {
+            const otherParticipant = chat.participants.find(
+              (p) => p._id !== session?.user?.id
+            );
+            return (
+              otherParticipant?.name?.toLowerCase().includes(query) ||
+              otherParticipant?.handle?.toLowerCase().includes(query)
+            );
+          }
+        })
+      : [];
 
   if (status === "loading") {
     return (
@@ -202,11 +355,10 @@ export default function ChatsPage() {
               Select a conversation
             </h2>
             <p className="text-gray-500 text-center mb-6">
-              Choose a chat from the sidebar to start messaging.<br />
-          
+              Choose a chat from the sidebar to start messaging.
+              <br />
             </p>
             <div className="flex gap-3">
-
               <button
                 onClick={() => router.push("/friends")}
                 className="inline-flex items-center px-4 py-2 rounded-md bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition"
@@ -244,4 +396,3 @@ export default function ChatsPage() {
     </>
   );
 }
-

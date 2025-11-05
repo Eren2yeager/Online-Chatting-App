@@ -16,7 +16,7 @@ import {
   ArrowRightOnRectangleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import CreateGroupModal from "../chat/CreateGroupModal";
+import CreateGroupModal from "../chat/CreateGroupModal.jsx";
 export default function Navigation() {
   const { data: session } = useSession();
   const router = useRouter();

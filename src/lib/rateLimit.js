@@ -140,23 +140,6 @@ class RateLimiter {
     const oldestRequest = Math.min(...validRequests);
     return new Date(oldestRequest + this.windowMs);
   }
-
-  /**
-   * Clean up old entries to prevent memory leaks
-   */
-  cleanup() {
-    const now = Date.now();
-    const windowStart = now - this.windowMs;
-
-    for (const [key, requests] of this.requests.entries()) {
-      const validRequests = requests.filter(timestamp => timestamp > windowStart);
-      if (validRequests.length === 0) {
-        this.requests.delete(key);
-      } else {
-        this.requests.set(key, validRequests);
-      }
-    }
-  }
 }
 
 // Create singleton instance

@@ -67,7 +67,7 @@ export const authOptions = {
             handle,
     
             emailVerified: profile?.email_verified ? new Date() : null,
-            // bio, avatar, status, lastSeen, friends, blocked will use schema defaults
+            // bio, image, status, lastSeen, friends, blocked will use schema defaults
           });
         } else {
           // Update existing user's info
@@ -86,8 +86,8 @@ export const authOptions = {
     async session({ session, token }) {
       try {
         await connectDB();
-        console.log("session", session);
-        console.log("token", token);
+        // console.log("session", session);
+        // console.log("token", token);
         const dbUser = await User.findOne({ email: session.user.email });
         if (dbUser) {
           session.user.id = dbUser._id.toString();

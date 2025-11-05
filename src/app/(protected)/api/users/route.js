@@ -16,14 +16,18 @@ export async function GET() {
 
     // Get all users except current user
     const users = await User.find({ _id: { $ne: session.user.id } })
-      .select('id name email image')
+      .select('name email image handle bio status lastSeen')
       .limit(50);
 
     const transformedUsers = users.map(user => ({
       id: user._id.toString(),
       name: user.name,
       email: user.email,
-      image: user.image
+      image: user.image,
+      handle: user.handle,
+      bio: user.bio,
+      status: user.status,
+      lastSeen: user.lastSeen
     }));
 
     return NextResponse.json(transformedUsers);
@@ -53,7 +57,7 @@ export async function POST(request) {
       session.user.id,
       { name, image },
       { new: true, runValidators: true }
-    ).select('id name email image');
+    ).select('name email image handle bio status lastSeen');
 
     if (!updatedUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -63,7 +67,11 @@ export async function POST(request) {
       id: updatedUser._id.toString(),
       name: updatedUser.name,
       email: updatedUser.email,
-      image: updatedUser.image
+      image: updatedUser.image,
+      handle: updatedUser.handle,
+      bio: updatedUser.bio,
+      status: updatedUser.status,
+      lastSeen: updatedUser.lastSeen
     });
   } catch (error) {
     console.error('Error updating user:', error);

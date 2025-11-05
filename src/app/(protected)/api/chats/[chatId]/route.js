@@ -88,96 +88,9 @@ export async function GET(request, { params }) {
 /**
  * PATCH /api/chats/[chatId]
  * Update chat settings (name, image, etc.)
+ * Note: This is now handled by socket event 'chat:update'
+ * Route removed - use socket events for real-time updates
  */
-export async function PATCH(request, { params }) {
-  try {
-    // Rate limiting
-    const rateLimitResult = await rateLimit(request, 50, 60 * 1000); // 50 requests per minute
-    if (!rateLimitResult.success) {
-      const response = tooManyRequests();
-      applyRateLimitHeaders(response, rateLimitResult);
-      return response;
-    }
-    
-    // Authentication check
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return unauthorized('Authentication required');
-    }
-
-    const { chatId } = params;
-    const { name, description, image, privacy } = await request.json();
-
-    // Connect to database
-    await connectDB();
-
-    // Find the chat - use projection to get only needed fields
-    const chat = await Chat.findById(chatId, {
-      participants: 1,
-      admins: 1,
-      isGroup: 1
-    })
-      .populate('admins', 'name email image handle');
-
-    if (!chat) {
-      return notFound('Chat not found');
-    }
-
-    // Check if user is an admin (only admins can update group settings)
-    if (chat.isGroup) {
-      const isAdmin = chat.admins.some(
-        admin => admin._id.toString() === session.user.id
-      );
-
-      if (!isAdmin) {
-        return forbidden('Only admins can update group settings');
-      }
-    } else {
-      // For 1:1 chats, only participants can update
-      const isParticipant = chat.participants.includes(session.user.id);
-      if (!isParticipant) {
-        return forbidden('Access denied');
-      }
-    }
-
-    // Update chat with all possible fields
-    const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (description !== undefined) updateData.description = description;
-    if (image !== undefined) updateData.avatar = image;
-    if (privacy !== undefined) updateData.privacy = privacy;
-
-    const updatedChat = await Chat.findByIdAndUpdate(
-      chatId,
-      updateData,
-      { new: true, select: {
-        participants: 1,
-        admins: 1,
-        createdBy: 1,
-        name: 1,
-        isGroup: 1,
-        lastMessage: 1,
-        description: 1,
-        image: 1,
-        privacy: 1,
-        createdAt: 1,
-        updatedAt: 1
-      }}
-    )
-      .populate([
-        { path: 'participants', select: 'name email image handle status lastSeen' },
-        { path: 'admins', select: 'name email image handle' },
-        { path: 'createdBy', select: 'name email image handle' },
-        { path: 'lastMessage.senderId', select: 'name image' }
-      ]);
-
-    return ok({ data: updatedChat });
-
-  } catch (error) {
-    console.error('Error updating chat:', error);
-    return serverError('Error updating chat');
-  }
-}
 
 /**
  * DELETE /api/chats/[chatId]

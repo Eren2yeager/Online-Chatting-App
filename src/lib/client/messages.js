@@ -1,25 +1,30 @@
 import { apiRequest } from './api.js';
+import * as socketApi from './socket-api.js';
 
+// Keep HTTP for fetching messages (pagination)
 export async function fetchMessages({ chatId, limit = 50, before }) {
   const params = new URLSearchParams({ chatId, limit: String(limit) });
   if (before) params.append('before', before);
   return apiRequest(`/api/messages?${params.toString()}`);
 }
 
-export async function sendMessage({ chatId, text, media, replyTo }) {
-  return apiRequest('/api/messages', { method: 'POST', body: { chatId, text, media, replyTo } });
+// Use socket for sending messages (real-time)
+export async function sendMessage(socket, { chatId, text, media, replyTo }) {
+  return socketApi.sendMessage(socket, { chatId, text, media, replyTo });
 }
 
-export async function addReaction({ messageId, emoji }) {
-  return apiRequest(`/api/messages/${messageId}/reactions`, { method: 'POST', body: { emoji } });
+// Use socket for reactions (real-time)
+export async function addReaction(socket, { messageId, emoji }) {
+  return socketApi.addReaction(socket, { messageId, emoji });
 }
 
-export async function removeReaction({ messageId, emoji }) {
-  return apiRequest(`/api/messages/${messageId}/reactions`, { method: 'DELETE', body: emoji ? { emoji } : undefined });
+export async function removeReaction(socket, { messageId }) {
+  return socketApi.removeReaction(socket, { messageId });
 }
 
-export async function markChatRead({ chatId, upToMessageId }) {
-  return apiRequest(`/api/chats/${chatId}/read`, { method: 'POST', body: upToMessageId ? { upToMessageId } : {} });
+// Use socket for read receipts (real-time)
+export async function markChatRead(socket, { chatId, messageId }) {
+  return socketApi.markMessageRead(socket, { chatId, messageId });
 }
 
 
