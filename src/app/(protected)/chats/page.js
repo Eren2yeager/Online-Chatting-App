@@ -12,6 +12,7 @@ import {
 import ChatSidebar from "../../../components/chat/ChatSidebar";
 import CreateGroupModal from "../../../components/chat/CreateGroupModal.jsx";
 import FriendRequestsModal from "../../../components/chat/FriendRequestsModal.jsx";
+import AddFriendModal from "../../../components/friends/AddFriendModal.jsx";
 import { useSocket } from "@/lib/socket";
 
 /**
@@ -25,6 +26,7 @@ export default function ChatsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showFriendRequests, setShowFriendRequests] = useState(false);
+  const [showAddFriend, setShowAddFriend] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [friendRequestCount, setFriendRequestCount] = useState(0);
 
@@ -342,6 +344,10 @@ export default function ChatsPage() {
               onSearchChange={setSearchQuery}
               onCreateGroup={() => setShowCreateGroup(true)}
               onShowFriendRequests={() => setShowFriendRequests(true)}
+              onShowAddFriend={() => {
+                console.log('Add Friend clicked!');
+                setShowAddFriend(true);
+              }}
               loading={loading}
               friendRequestCount={friendRequestCount}
             />
@@ -398,6 +404,25 @@ export default function ChatsPage() {
           fetchChats();
         }}
       />
+
+      <AddFriendModal
+        isOpen={showAddFriend}
+        onClose={() => {
+          console.log('Closing AddFriendModal');
+          setShowAddFriend(false);
+        }}
+        onFriendAdded={() => {
+          console.log('Friend added');
+          setShowAddFriend(false);
+        }}
+      />
+      
+      {/* Debug: Show state */}
+      {showAddFriend && (
+        <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg z-[9999]">
+          AddFriend Modal State: OPEN
+        </div>
+      )}
     </>
   );
 }

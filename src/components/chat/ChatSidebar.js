@@ -10,6 +10,7 @@ import {
   ChatBubbleLeftRightIcon,
   FunnelIcon,
   PlusIcon,
+  EllipsisVerticalIcon,
   Cog6ToothIcon,
   BellIcon,
   UserPlusIcon,
@@ -40,6 +41,7 @@ export default function ChatSidebar({
   loading,
   onCreateGroup,
   onShowFriendRequests,
+  onShowAddFriend,
 }) {
   const { data: session } = useSession();
   const { getChatUnread, totalUnreadCount } = useUnreadCount();
@@ -253,65 +255,77 @@ export default function ChatSidebar({
             <div className="relative">
               <button
                 onClick={() => setShowActions(!showActions)}
-                onBlur={() => setShowActions(false)}
                 className="p-2 rounded-lg bg-white text-gray-600 hover:bg-gray-100 transition-colors"
                 title="Quick Actions"
               >
-                <PlusIcon className="h-5 w-5" />
+                <EllipsisVerticalIcon className="h-5 w-5" />
               </button>
 
               <AnimatePresence>
                 {showActions && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                    className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50"
-                  >
-                    <button
-                      onClick={() => {
-                        onCreateGroup?.();
-                        setShowActions(false);
-                      }}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
+                  <>
+                    {/* Backdrop to close menu */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowActions(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                      className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50"
                     >
-                      <UserGroupIcon className="h-5 w-5 text-blue-500" />
-                      <span className="text-sm font-medium">Create Group</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        router.push("/friends");
-                        setShowActions(false);
-                      }}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
-                    >
-                      <UserPlusIcon className="h-5 w-5 text-green-500" />
-                      <span className="text-sm font-medium">Add Friends</span>
-                    </button>
-                    {/* <button
-                      onClick={() => {
-                        onShowFriendRequests?.();
-                        setShowActions(false);
-                      }}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
-                    >
-                      <BellIcon className="h-5 w-5 text-purple-500" />
-                      <span className="text-sm font-medium">
-                        Friend Requests
-                      </span>
-                    </button> */}
-                    <div className="border-t border-gray-100 my-1"></div>
-                    <button
-                      onClick={() => {
-                        router.push("/settings");
-                        setShowActions(false);
-                      }}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
-                    >
-                      <Cog6ToothIcon className="h-5 w-5 text-gray-500" />
-                      <span className="text-sm font-medium">Settings</span>
-                    </button>
-                  </motion.div>
+                      <button
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          onCreateGroup?.();
+                          setShowActions(false);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
+                      >
+                        <UserGroupIcon className="h-5 w-5 text-blue-500" />
+                        <span className="text-sm font-medium">Create Group</span>
+                      </button>
+                      {/* <button
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          console.log('Add Friends button clicked in sidebar');
+                          console.log('onShowAddFriend exists?', !!onShowAddFriend);
+                          onShowAddFriend?.();
+                          setShowActions(false);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
+                      >
+                        <UserPlusIcon className="h-5 w-5 text-green-500" />
+                        <span className="text-sm font-medium">Add Friends</span>
+                      </button> */}
+                      {/* <button
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          onShowFriendRequests?.();
+                          setShowActions(false);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
+                      >
+                        <BellIcon className="h-5 w-5 text-purple-500" />
+                        <span className="text-sm font-medium">
+                          Friend Requests
+                        </span>
+                      </button> */}
+                      <div className="border-t border-gray-100 my-1"></div>
+                      <button
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          router.push("/settings");
+                          setShowActions(false);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-gray-700"
+                      >
+                        <Cog6ToothIcon className="h-5 w-5 text-gray-500" />
+                        <span className="text-sm font-medium">Settings</span>
+                      </button>
+                    </motion.div>
+                  </>
                 )}
               </AnimatePresence>
             </div>

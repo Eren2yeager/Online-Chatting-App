@@ -352,6 +352,31 @@ export default function ChatInput({
     }
   };
 
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const files = [];
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      // Handle files from clipboard
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault(); // Prevent default paste behavior for files
+      processFiles(files);
+    }
+    // If no files, let default paste behavior handle text
+  };
+
   const addEmoji = (emoji) => {
     // Handle both string and object formats
     let emojiValue;
@@ -627,6 +652,7 @@ export default function ChatInput({
             value={message}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Type a message..."
             disabled={disabled || uploading}
             className="w-full resize-none border-0 outline-none bg-transparent text-gray-900 placeholder-gray-500 text-sm leading-5 max-h-[120px] py-2"
@@ -672,7 +698,7 @@ export default function ChatInput({
           {uploading ? (
             <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
           ) : (
-            <ArrowUpIcon className="h-5 w-5" />
+            <ArrowUpIcon className="h-5 font-extrabold w-5" />
           )}
         </button>
       </div>

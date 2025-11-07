@@ -216,6 +216,35 @@ export default function ChatMessage({
     return !isImage(media) && !isVideo(media) && !isAudio(media);
   };
 
+  // Render text with clickable links
+  const renderTextWithLinks = (text, isOwn) => {
+    if (!text) return null;
+
+    // URL regex pattern
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`underline font-medium hover:opacity-80 transition-opacity ${
+              isOwn ? 'text-white' : 'text-blue-600'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
   const downloadFile = async (media) => {
     try {
       const response = await fetch(media.url);
@@ -750,10 +779,10 @@ export default function ChatMessage({
             {/* Media */}
             {hasMedia && <div className="mb-2">{renderMediaGrid()}</div>}
 
-            {/* Text */}
+            {/* Text with Link Detection */}
             {hasText && (
               <p className="text-[10px] min-[400px]:text-[11px] sm:text-xs md:text-sm whitespace-pre-wrap message-text leading-snug w-full break-words overflow-wrap-anywhere">
-                {message.text}
+                {renderTextWithLinks(message.text, isOwn)}
               </p>
             )}
 

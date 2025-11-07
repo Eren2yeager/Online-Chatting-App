@@ -34,11 +34,14 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
   const fetchFriendRequests = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/friends/requests?type=${activeTab}`);
+      const response = await fetch('/api/friends/requests');
       const data = await response.json();
 
       if (data.success) {
-        setFriendRequests(data.data);
+        // API returns { incoming: [], outgoing: [] }
+        // Map to received/sent based on activeTab
+        const requests = activeTab === 'received' ? data.incoming : data.outgoing;
+        setFriendRequests(requests || []);
       }
     } catch (error) {
       console.error('Error fetching friend requests:', error);
@@ -188,7 +191,7 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
           </motion.div>
         ) : (
           <div className="space-y-3">
-            {friendRequests.map((request, index) => {
+            {friendRequests?.map((request, index) => {
               const user = getRequestUser(request);
 
               return (

@@ -16,14 +16,14 @@ import {
   ArrowRightOnRectangleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import CreateGroupModal from "../chat/CreateGroupModal.jsx";
+// import CreateGroupModal from "../chat/CreateGroupModal.jsx";
 export default function Navigation() {
   const { data: session } = useSession();
   const router = useRouter();
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(false);
   const { isCollapsed, setIsCollapsed } = useNavigation();
-  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  // const [showCreateGroup, setShowCreateGroup] = useState(false);
 
   // Track screen size to determine desktop/mobile
   useEffect(() => {
@@ -195,13 +195,13 @@ export default function Navigation() {
                       </button>
                     );
                   })}
-                  <button
+                  {/* <button
                     onClick={() => setShowCreateGroup(true)}
                     className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     <PlusIcon className="w-5 h-5 text-gray-500" />
                     <span className="font-medium">Create Group</span>
-                  </button>
+                  </button> */}
                 </div>
 
                 {/* Settings & Sign Out */}
@@ -229,7 +229,7 @@ export default function Navigation() {
           </div>
         )}
       </AnimatePresence>
-      <CreateGroupModal
+      {/* <CreateGroupModal
         isOpen={showCreateGroup}
         onClose={() => setShowCreateGroup(false)}
         onGroupCreated={() => {
@@ -237,7 +237,7 @@ export default function Navigation() {
           // Refresh the chat list
           router.refresh();
         }}
-      />
+      /> */}
     </>
   );
 }
