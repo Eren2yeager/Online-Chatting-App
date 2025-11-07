@@ -351,13 +351,13 @@ export default function ChatsPage() {
         <div className="hidden md:flex flex-1 items-center justify-center max-h-full">
           <div className="max-w-full  w-full px-8 py-12  rounded-2xl  flex flex-col items-center">
             <ChatBubbleLeftRightIcon className="h-20 w-20  mb-4 p-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full text-white" />
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+            {/* <h2 className="text-2xl font-semibold text-gray-900 mb-2">
               Select a conversation
-            </h2>
-            <p className="text-gray-500 text-center mb-6">
+            </h2> */}
+            {/* <p className="text-gray-500 text-center mb-6">
               Choose a chat from the sidebar to start messaging.
               <br />
-            </p>
+            </p> */}
             <div className="flex gap-3">
               <button
                 onClick={() => router.push("/friends")}
@@ -380,8 +380,13 @@ export default function ChatsPage() {
         isOpen={showCreateGroup}
         onClose={() => setShowCreateGroup(false)}
         onGroupCreated={(newChat) => {
-          setChats((prev) => [newChat, ...prev]);
+          console.log("Group created:", newChat);
+          setChats((prev) => {
+            console.log("Adding new chat to list");
+            return [newChat, ...prev];
+          });
           setShowCreateGroup(false);
+          console.log("Navigating to new chat:", newChat._id);
           router.push(`/chats/${newChat._id}`);
         }}
       />

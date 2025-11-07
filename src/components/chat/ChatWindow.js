@@ -37,7 +37,7 @@ export default function ChatWindow({
   onChatUpdated,
 }) {
   const { data: session } = useSession();
-  const { isConnected } = useSocket();
+  const { isConnected ,socket} = useSocket();
   const { emit, emitAck } = useSocketEmitter();
   const { markChatAsRead } = useUnreadCount();
   const messagesEndRef = useRef(null);
@@ -155,12 +155,45 @@ export default function ChatWindow({
       scrollToBottom(true); // Changed to smooth scroll
     }
 
-    // Mark chat read whenever messages change
-    if (messages.length > 0) {
-      const lastId = messages[messages.length - 1]?._id;
-      markChatRead({ chatId: chat._id, upToMessageId: lastId }).catch(() => {});
+    // Mark all unread messages as read when messages are loaded/updated
+    if (messages.length > 0 && socket && session?.user?.id) {
+      const unreadMessages = messages.filter(msg => {
+        const isOwnMessage = msg.sender._id === session.user.id;
+        const isAlreadyRead = msg.readBy && msg.readBy.includes(session.user.id);
+        
+        console.log('📖 Message check:', {
+          id: msg._id,
+          sender: msg.sender._id,
+          currentUser: session.user.id,
+          isOwnMessage,
+          readBy: msg.readBy,
+          isAlreadyRead,
+          shouldMarkAsRead: !isOwnMessage && !isAlreadyRead
+        });
+        
+        return !isOwnMessage && !isAlreadyRead;
+      });
+
+      console.log('📖 Marking messages as read:', {
+        totalMessages: messages.length,
+        unreadMessages: unreadMessages.length,
+        unreadIds: unreadMessages.map(m => m._id),
+        userId: session.user.id
+      });
+
+      // Add small delay to ensure room is joined
+      if (unreadMessages.length > 0) {
+        setTimeout(() => {
+          unreadMessages.forEach(message => {
+            console.log('📖 Marking message as read:', message._id);
+            markChatRead(socket, { chatId: chat._id, messageId: message._id }).catch((error) => {
+              console.error('❌ Failed to mark message as read:', error);
+            });
+          });
+        }, 500); // 500ms delay
+      }
     }
-  }, [messages, isUserScrolling]);
+  }, [messages, isUserScrolling, socket, session?.user?.id, chat._id]);
 
   // Auto-scroll when typing indicator appears/disappears
   useEffect(() => {
@@ -170,15 +203,26 @@ export default function ChatWindow({
     }
   }, [typingUsers.length, isUserScrolling]);
 
-  // Fetch messages and mark as read
+  // Join chat room and fetch messages when chat changes
   useEffect(() => {
-    if (chat?._id) {
+    if (chat?._id && socket && isConnected) {
+      console.log("Joining chat room for chat:", chat._id);
+      
+      // Join the chat room on server
+      socket.emit("chat:join", { chatId: chat._id }, (response) => {
+        if (response?.success) {
+          console.log("✅ Successfully joined chat room");
+        } else {
+          console.error("❌ Failed to join chat room:", response?.error);
+        }
+      });
+      
       fetchMessages();
       // Mark chat as read when opened
       markChatAsRead(chat._id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat._id]);
+  }, [chat._id, socket, isConnected]);
 
   // Socket event listeners
   // useSocketListener is a custom React hook that subscribes to a socket event ("message:new" here)
@@ -187,9 +231,16 @@ export default function ChatWindow({
   // So: emit = client → server, useSocketListener = server → client.
 
   useSocketListener("message:new", (data) => {
+    console.log("📨 Received message:new event:", data);
+    console.log("Current chat ID:", chat._id);
+    console.log("Message chat ID:", data.chatId);
+    
     if (data.chatId === chat._id) {
+      console.log("✅ Message is for current chat, adding to messages");
       setMessages((prev) => [...prev, data.message]);
       onNewMessage?.(data.message);
+    } else {
+      console.log("❌ Message is for different chat, ignoring");
     }
   });
 
@@ -226,6 +277,23 @@ export default function ChatWindow({
             : msg
         )
       );
+    }
+  });
+
+  useSocketListener("message:read", (data) => {
+    if (data.chatId === chat._id) {
+      console.log("📖 ChatWindow: Message read update received:", data);
+      setMessages((prev) => {
+        const updated = prev.map((msg) =>
+          msg._id === data.messageId
+            ? { ...msg, readBy: data.readBy }
+            : msg
+        );
+        console.log("📖 Updated messages state for message:", data.messageId);
+        return updated;
+      });
+    } else {
+      console.log("📖 Message read update for different chat:", data.chatId, "current:", chat._id);
     }
   });
 

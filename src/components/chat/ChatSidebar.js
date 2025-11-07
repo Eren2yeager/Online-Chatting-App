@@ -19,11 +19,13 @@ import {
 import dateFormatter from "@/functions/dateFormattor";
 import {
   Avatar,
+  UserAvatar,
   Badge,
   NotificationBadge,
   Input,
   Spinner,
 } from "@/components/ui";
+import { usePresence } from "@/lib/socket";
 import { useUnreadCount } from "@/components/layout/UnreadCountContext";
 import UnreadBadge from "./UnreadBadge";
 /**
@@ -41,6 +43,7 @@ export default function ChatSidebar({
 }) {
   const { data: session } = useSession();
   const { getChatUnread, totalUnreadCount } = useUnreadCount();
+  const onlineUsers = usePresence();
   const [showActions, setShowActions] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterType, setFilterType] = useState("all"); // 'all', 'groups', 'direct'
@@ -451,16 +454,24 @@ export default function ChatSidebar({
                   <div className="flex items-center gap-3">
                     {/* Avatar with status */}
                     <div className="relative flex-shrink-0">
-                      <Avatar
-                        src={getChatAvatar(chat)}
-                        alt={getChatDisplayName(chat)}
-                        size="md"
-                        fallback={
-                          chat.isGroup ? (
-                            <UserGroupIcon className="h-6 w-6" />
-                          ) : undefined
-                        }
-                      />
+                      {chat.isGroup ? (
+                        <Avatar
+                          src={getChatAvatar(chat)}
+                          alt={getChatDisplayName(chat)}
+                          size="md"
+                          fallback={<UserGroupIcon className="h-6 w-6" />}
+                        />
+                      ) : (
+                        <UserAvatar
+                          user={chat.participants?.find(
+                            (p) => p._id !== session?.user?.id
+                          )}
+                          size="md"
+                          showStatus={true}
+                          showName={false}
+                          onlineUsers={onlineUsers}
+                        />
+                      )}
                       {chat.isGroup && (
                         <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center ring-2 ring-white">
                           <UserGroupIcon className="h-3.5 w-3.5 text-white" />

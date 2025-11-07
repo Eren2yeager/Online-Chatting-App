@@ -10,7 +10,8 @@ import {
   ShieldCheckIcon,
   UserMinusIcon,
 } from "@heroicons/react/24/outline";
-import { Button, Avatar, Badge, Modal } from "@/components/ui";
+import { Button, UserAvatar, Badge, Modal } from "@/components/ui";
+import { usePresence } from "@/lib/socket";
 
 export default function MembersTab({
   participants,
@@ -31,6 +32,7 @@ export default function MembersTab({
   handlePromoteAdmin,
   handleDemoteAdmin,
 }) {
+  const onlineUsers = usePresence();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
@@ -107,35 +109,30 @@ export default function MembersTab({
                 className="flex flex-col sm:flex-row gap-3 justify-between p-4 rounded-xl border border-gray-200 hover:shadow-md hover:border-blue-200 transition-all bg-white"
               >
                 <div className="flex items-center gap-3">
-                  <Avatar
-                    src={p.image}
-                    alt={p.name}
-                    size="md"
-                    status={p.status}
+                  <UserAvatar
+                    user={p}
+                    size="sm"
+                    showStatus={true}
+                    showName={true}
+                    onlineUsers={onlineUsers}
+                    
                   />
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {p.name} 
-                      <span className="pl-2">
-
-                      {isCreatorFlag ? (
-                        <Badge
+                  <div className="flex items-center gap-2">
+                    {isCreatorFlag ? (
+                      <Badge
                         variant="primary"
                         icon={<FaCrown className="h-3 w-3" />}
-                        >
-                          Creator
-                        </Badge>
-                      ) : isAdminFlag ? (
-                        <Badge
-                          variant="primary"
-                          icon={<ShieldCheckIcon className="h-3 w-3" />}
-                          >
-                          Admin
-                        </Badge>
-                      ) : null}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500">@{p.handle}</div>
+                      >
+                        Creator
+                      </Badge>
+                    ) : isAdminFlag ? (
+                      <Badge
+                        variant="primary"
+                        icon={<ShieldCheckIcon className="h-3 w-3" />}
+                      >
+                        Admin
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
 
@@ -225,7 +222,13 @@ export default function MembersTab({
                       onChange={() => toggleSelect(f._id)}
                       className="h-4 w-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                     />
-                    <Avatar src={f.image} alt={f.name} size="sm" />
+                    <UserAvatar
+                      user={f}
+                      size="sm"
+                      showStatus={true}
+                      showName={false}
+                      onlineUsers={onlineUsers}
+                    />
                     <div>
                       <div className="text-sm font-medium text-gray-900">
                         {f.name}

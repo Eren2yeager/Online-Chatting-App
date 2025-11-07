@@ -52,7 +52,7 @@ const RELATIONSHIP = {
 
 export default function ProfileByHandlePage() {
   const { emitAck } = useSocketEmitter();
-  const { socket } = useSocket();
+  const { socket , isConnected} = useSocket();
   const params = useParams();
   const router = useRouter();
   const { handle } = params;
@@ -146,6 +146,13 @@ export default function ProfileByHandlePage() {
     };
     const onCancelled = resync;
     const onRejected = resync;
+    const onNewRequest = ({ request }) => {
+      // If someone sent me a friend request, update UI
+      if (request.to._id === currentUser._id && request.from._id === user._id) {
+        console.log("📨 Received friend request from", user.name);
+        resync();
+      }
+    };
     const onRemoved = ({ userId }) => {
       // If other user removed me or I removed them
       resync();
@@ -154,48 +161,72 @@ export default function ProfileByHandlePage() {
     socket.on('friend:request:accepted', onAccepted);
     socket.on('friend:request:cancelled', onCancelled);
     socket.on('friend:request:rejected', onRejected);
+    socket.on('friend:request:new', onNewRequest);
     socket.on('friend:removed', onRemoved);
 
     return () => {
       socket.off('friend:request:accepted', onAccepted);
       socket.off('friend:request:cancelled', onCancelled);
       socket.off('friend:request:rejected', onRejected);
+      socket.off('friend:request:new', onNewRequest);
       socket.off('friend:removed', onRemoved);
     };
   }, [socket, user?._id, currentUser?._id]);
 
   // Check relationship between current user and target user
   const checkExistingRelationship = async (targetUserId) => {
-    // Check block status first
-    const youBlocked = (currentUser.blocked || []).some(
-      (id) => (typeof id === "string" ? id : id._id) === targetUserId
-    );
-    const theyBlocked = (user.blocked || []).some(
-      (id) => (typeof id === "string" ? id : id._id) === currentUser._id
-    );
-    if (youBlocked) {
-      setRelationship(RELATIONSHIP.YOU_BLOCKED);
-      setPendingRequestId(null);
-      return;
-    }
-    if (theyBlocked) {
-      setRelationship(RELATIONSHIP.THEY_BLOCKED);
-      setPendingRequestId(null);
-      return;
-    }
-
-    // Check if already friends
-    const friendIds = (currentUser.friends || []).map((f) =>
-      typeof f === "string" ? f : f._id
-    );
-    if (friendIds.includes(targetUserId)) {
-      setRelationship(RELATIONSHIP.FRIEND);
-      setPendingRequestId(null);
-      return;
-    }
-
-    // Check for pending requests (either direction)
     try {
+      // Fetch fresh user data to get updated friends/blocked lists
+      console.log("🔄 Checking relationship with fresh data...");
+      
+      const [currentUserRes, targetUserRes] = await Promise.all([
+        fetch("/api/users/profile"),
+        fetch(`/api/users/by-handle/${handle}`)
+      ]);
+
+      if (!currentUserRes.ok || !targetUserRes.ok) {
+        console.error("Failed to fetch fresh user data");
+        return;
+      }
+
+      const freshCurrentUser = await currentUserRes.json();
+      const freshTargetUser = await targetUserRes.json();
+
+      // Use fresh data for checking (don't update state to avoid infinite loop)
+
+      // Check block status first
+      const youBlocked = (freshCurrentUser.blocked || []).some(
+        (id) => (typeof id === "string" ? id : id._id) === targetUserId
+      );
+      const theyBlocked = (freshTargetUser.blocked || []).some(
+        (id) => (typeof id === "string" ? id : id._id) === freshCurrentUser._id
+      );
+      
+      if (youBlocked) {
+        console.log("✅ Relationship: YOU_BLOCKED");
+        setRelationship(RELATIONSHIP.YOU_BLOCKED);
+        setPendingRequestId(null);
+        return;
+      }
+      if (theyBlocked) {
+        console.log("✅ Relationship: THEY_BLOCKED");
+        setRelationship(RELATIONSHIP.THEY_BLOCKED);
+        setPendingRequestId(null);
+        return;
+      }
+
+      // Check if already friends
+      const friendIds = (freshCurrentUser.friends || []).map((f) =>
+        typeof f === "string" ? f : f._id
+      );
+      if (friendIds.includes(targetUserId)) {
+        console.log("✅ Relationship: FRIEND");
+        setRelationship(RELATIONSHIP.FRIEND);
+        setPendingRequestId(null);
+        return;
+      }
+
+      // Check for pending requests (either direction)
       const requestsRes = await fetch("/api/friends/requests");
       if (requestsRes.ok) {
         const { incoming = [], outgoing = [] } = await requestsRes.json();
@@ -205,6 +236,7 @@ export default function ProfileByHandlePage() {
           (req) => req.to._id === targetUserId && req.status === "pending"
         );
         if (outgoingReq) {
+          console.log("✅ Relationship: OUTGOING");
           setRelationship(RELATIONSHIP.OUTGOING);
           setPendingRequestId(outgoingReq._id);
           return;
@@ -215,16 +247,23 @@ export default function ProfileByHandlePage() {
           (req) => req.from._id === targetUserId && req.status === "pending"
         );
         if (incomingReq) {
+          console.log("✅ Relationship: INCOMING");
           setRelationship(RELATIONSHIP.INCOMING);
           setPendingRequestId(incomingReq._id);
           return;
         }
       }
+
+      // No relationship found
+      console.log("✅ Relationship: NONE");
+      setRelationship(RELATIONSHIP.NONE);
+      setPendingRequestId(null);
+      
     } catch (error) {
-      // ignore
+      console.error("Error checking relationship:", error);
+      setRelationship(RELATIONSHIP.NONE);
+      setPendingRequestId(null);
     }
-    setRelationship(RELATIONSHIP.NONE);
-    setPendingRequestId(null);
   };
 
   const copyProfileHandle = () => {
@@ -276,11 +315,10 @@ export default function ProfileByHandlePage() {
       const res = await emitAck("friend:request:action", { requestId: pendingRequestId, action: "accept" });
       if (res?.success) {
         toast({text :"Friend request accepted"});
-
         setRelationship(RELATIONSHIP.FRIEND);
         setPendingRequestId(null);
         // Re-check relationship to ensure UI is in sync with backend
-
+        await checkExistingRelationship(user._id);
       } else {
         toast({ text :res?.error || "Failed to accept request"});
       }
@@ -326,36 +364,30 @@ export default function ProfileByHandlePage() {
   // Block/unblock
   const blockUser = async () => {
     try {
-      const res = await fetch(`/api/users/block`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user._id }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const res = await emitAck("user:block", { userId: user._id });
+      if (res?.success) {
         setRelationship(RELATIONSHIP.YOU_BLOCKED);
         toast({text :"User blocked"});
       } else {
-        toast({ text :data?.error || "Failed to block"});
+        toast({ text :res?.error || "Failed to block"});
       }
-    } catch {
+    } catch (error) {
+      console.error("Error blocking user:", error);
       toast({ text :"Failed to block"});
     }
   };
 
   const unblockUser = async () => {
     try {
-      const res = await fetch(`/api/users/block?userId=${user._id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const res = await emitAck("user:unblock", { userId: user._id });
+      if (res?.success) {
         setRelationship(RELATIONSHIP.NONE);
         toast({text :"User unblocked"});
       } else {
-        toast({ text :data?.error || "Failed to unblock"});
+        toast({ text :res?.error || "Failed to unblock"});
       }
-    } catch {
+    } catch (error) {
+      console.error("Error unblocking user:", error);
       toast({ text :"Failed to unblock"});
     }
   };
@@ -453,41 +485,26 @@ export default function ProfileByHandlePage() {
     }
   };
 
+  const [isStartingChat, setIsStartingChat] = useState(false);
+
+  // Socket listeners for real-time friend updates (already exist above)
+  // Removed duplicate listeners since they already exist in the file
+
   const startChat = async () => {
+    if (isStartingChat) return; // Prevent double clicks
+    
     try {
+      setIsStartingChat(true);
+      
       if (!user || !user._id) {
-        toast({ text :"Invalid user"});
+        toast({ text: "Invalid user" });
         return;
       }
 
-      // First check if a chat already exists
-      const response = await fetch("/api/chats");
-      const data = await response.json();
-      console.log(data)
-      if (data.success) {
-        const existingChat = data.data.chats.find(
-          (chat) =>
-            !chat.isGroup &&
-            chat.participants.length === 2 &&
-            chat.participants.some(
-              (p) =>
-                (typeof p === "object" && (p._id === user._id || p._id?.toString() === user._id)) ||
-                (typeof p === "string" && p === user._id)
-            ) &&
-            chat.participants.some(
-              (p) =>
-                (typeof p === "object" && (p._id === currentUser._id || p._id?.toString() === currentUser._id)) ||
-                (typeof p === "string" && p === currentUser._id)
-            )
-        );
-        
-        if (existingChat) {
-          router.push(`/chats/${existingChat._id}`);
-          return;
-        }
-      }
+      console.log("Starting chat with user:", user._id);
+      console.log("Current user:", currentUser._id);
 
-      // Create new chat
+      // Create new chat directly - the API will handle checking for existing chats
       const createResponse = await fetch("/api/chats", {
         method: "POST",
         headers: {
@@ -499,16 +516,31 @@ export default function ProfileByHandlePage() {
         }),
       });
 
-      const newChat = await createResponse.json();
+      console.log("Response status:", createResponse.status);
+      console.log("Response headers:", Object.fromEntries(createResponse.headers.entries()));
 
-      if (newChat.success && newChat.data && newChat.data._id) {
-        router.push(`/chats/${newChat.data._id}`);
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error("Chat creation failed:", createResponse.status, errorText);
+        toast({ text: `Failed to start chat - ${createResponse.status}` });
+        return;
+      }
+
+      const newChat = await createResponse.json();
+      console.log("Chat creation response:", newChat);
+
+      if (newChat.success && newChat.data && newChat.data.chat && newChat.data.chat._id) {
+        console.log("Navigating to chat:", newChat.data.chat._id);
+        router.push(`/chats/${newChat.data.chat._id}`);
       } else {
-        toast({ text :newChat?.error || "Failed to start chat"});
+        console.error("Chat creation failed:", newChat);
+        toast({ text: newChat?.error || "Failed to start chat" });
       }
     } catch (error) {
       console.error("Chat error:", error);
-      toast({ text :"Failed to start chat"});
+      toast({ text: "Failed to start chat" });
+    } finally {
+      setIsStartingChat(false);
     }
   };
 
@@ -786,10 +818,24 @@ export default function ProfileByHandlePage() {
                   relationship !== RELATIONSHIP.YOU_BLOCKED && (
                     <button
                       onClick={startChat}
-                      className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                      disabled={isStartingChat}
+                      className={`w-full flex items-center justify-center px-4 py-3 rounded-lg font-medium transition-colors ${
+                        isStartingChat
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : "bg-blue-600 hover:bg-blue-700"
+                      } text-white`}
                     >
-                      <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" />
-                      Go to Chat
+                      {isStartingChat ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                          Starting Chat...
+                        </>
+                      ) : (
+                        <>
+                          <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" />
+                          Go to Chat
+                        </>
+                      )}
                     </button>
                   )}
               </div>

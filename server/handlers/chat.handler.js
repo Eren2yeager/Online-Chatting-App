@@ -34,11 +34,19 @@ export function registerChatHandlers(socket, io, userSockets) {
         });
       }
 
-      // Verify user is admin
+      // Check permissions: admin can always add, or members can add if privacy allows
       const isAdmin = chat.admins.some(
         (admin) => admin._id.toString() === socket.userId
       );
-      if (chat.privacy != "member_invite" || !isAdmin) {
+      const isMember = chat.participants.some(
+        (p) => p._id.toString() === socket.userId
+      );
+      
+      if (!isMember) {
+        return ack?.({ success: false, error: "You are not a member of this chat" });
+      }
+      
+      if (!isAdmin && chat.privacy !== "member_invite") {
         return ack?.({ success: false, error: "Only admins can add members" });
       }
 
@@ -173,6 +181,43 @@ export function registerChatHandlers(socket, io, userSockets) {
   });
 
   /**
+   * Join a specific chat room
+   */
+  socket.on("chat:join", async (data, ack) => {
+    try {
+      const { chatId } = data || {};
+
+      if (!chatId) {
+        return ack?.({ success: false, error: "chatId required" });
+      }
+
+      // Verify user is a participant of this chat
+      const chat = await Chat.findById(chatId);
+      if (!chat) {
+        return ack?.({ success: false, error: "Chat not found" });
+      }
+
+      const isParticipant = chat.participants.some(
+        (p) => p.toString() === socket.userId
+      );
+
+      if (!isParticipant) {
+        return ack?.({ success: false, error: "Not a participant of this chat" });
+      }
+
+      // Join the chat room
+      const chatRoom = `chat:${chatId}`;
+      socket.join(chatRoom);
+      
+      console.log(`User ${socket.userId} joined chat room: ${chatRoom}`);
+      ack?.({ success: true });
+    } catch (error) {
+      console.error("chat:join error:", error);
+      ack?.({ success: false, error: "Internal server error" });
+    }
+  });
+
+  /**
    * Create a new chat (direct or group)
    */
   socket.on("chat:create", async (data, ack) => {
@@ -223,14 +268,15 @@ export function registerChatHandlers(socket, io, userSockets) {
         .populate("admins", "name handle image")
         .populate("createdBy", "name handle image");
 
+      // Join all participants to the new chat room
+      const { joinParticipantsToChat } = await import("../utils/rooms.js");
+      joinParticipantsToChat(io, chat._id, allParticipants, userSockets);
+
       // Notify all participants
       for (const participantId of allParticipants) {
-        const participantSocketId = userSockets.get(participantId);
-        if (participantSocketId) {
-          io.to(participantSocketId).emit("chat:created", {
-            chat: populatedChat,
-          });
-        }
+        io.to(`user:${participantId}`).emit("chat:created", {
+          chat: populatedChat,
+        });
       }
 
       ack?.({ success: true, chat: populatedChat });

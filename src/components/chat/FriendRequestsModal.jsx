@@ -11,7 +11,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { useSocket } from '@/lib/socket';
 import * as socketApi from '@/lib/client/socket-api';
-import { Modal, ModalBody, Avatar, Button, Badge, Spinner, toast } from '@/components/ui';
+import { Modal, ModalBody, UserAvatar, Button, Badge, Spinner, toast } from '@/components/ui';
+import { usePresence } from '@/lib/socket';
 
 /**
  * Modern Friend Requests Modal
@@ -19,6 +20,7 @@ import { Modal, ModalBody, Avatar, Button, Badge, Spinner, toast } from '@/compo
 export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted }) {
   const { data: session } = useSession();
   const { socket, isConnected } = useSocket();
+  const onlineUsers = usePresence();
   const [friendRequests, setFriendRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('received');
@@ -198,11 +200,13 @@ export default function FriendRequestsModal({ isOpen, onClose, onRequestAccepted
                   transition={{ delay: index * 0.05 }}
                   whileHover={{ scale: 1.01 }}
                 >
-                  {/* Avatar */}
-                  <Avatar
-                    src={user.image}
-                    alt={user.name}
+                  {/* Avatar with online status */}
+                  <UserAvatar
+                    user={user}
                     size="lg"
+                    showStatus={true}
+                    showName={false}
+                    onlineUsers={onlineUsers}
                     className="ring-2 ring-white shadow-md"
                   />
 

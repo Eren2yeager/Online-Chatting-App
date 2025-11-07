@@ -1,45 +1,49 @@
 "use client";
-import {
-  createContext,
-  useContext,
-  useState,
-  useRef,
-  useEffect,
-  useCallback,
-} from "react";
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
 
-const mediaFullViewContext = createContext();
+import { createContext, useContext, useState } from "react";
+import MediaFullViewer from "../common/mediaFullViewer";
 
-export const useMediaFullView = () => useContext(mediaFullViewContext);
+const MediaFullViewContext = createContext();
 
-/* ------------------------------
-  Provider Component
------------------------------- */
-export function MediaFullViewContextProvider({ children }) {
-  const router = useRouter();
+export function MediaFullViewProvider({ children }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [mediaData, setMediaData] = useState(null);
 
-  const [mediaToView, setMediaToView] = useState(null);
+  const openMediaFullView = (data) => {
+    setMediaData(data);
+    setIsOpen(true);
+  };
 
-
-
-
-
-
-
-
+  const closeMediaFullView = () => {
+    setIsOpen(false);
+    setMediaData(null);
+  };
 
   return (
-    <mediaFullViewContext.Provider
+    <MediaFullViewContext.Provider
       value={{
-
-        mediaToView,
-        setMediaToView,
-
+        openMediaFullView,
+        closeMediaFullView,
+        isOpen,
+        mediaData,
       }}
     >
       {children}
-    </mediaFullViewContext.Provider>
+      {isOpen && mediaData && (
+        <MediaFullViewer
+          isOpen={isOpen}
+          onClose={closeMediaFullView}
+          media={mediaData}
+        />
+      )}
+    </MediaFullViewContext.Provider>
   );
+}
+
+export function useMediaFullView() {
+  const context = useContext(MediaFullViewContext);
+  if (context === undefined) {
+    throw new Error('useMediaFullView must be used within a MediaFullViewProvider');
+  }
+  return context;
 }

@@ -11,3 +11,4 @@ export { default as ToastProvider, toast } from './Toast';
 export { default as Spinner, PageLoader } from './Spinner';
 export { default as Loader } from './Loader';
 export { default as ContextPortal } from './ContextPortal';
+export { default as UserAvatar } from './UserAvatar.jsx';

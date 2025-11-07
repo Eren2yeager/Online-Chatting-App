@@ -63,10 +63,13 @@ export async function deleteMessage(socket, { messageId, deleteForEveryone = fal
 }
 
 export async function markMessageRead(socket, { messageId, chatId }) {
-  return emitWithAck(socket, 'message:read', {
+  console.log('📖 socketApi.markMessageRead called:', { messageId, chatId });
+  const result = await emitWithAck(socket, 'message:read', {
     messageId,
     chatId
   });
+  console.log('📖 socketApi.markMessageRead result:', result);
+  return result;
 }
 
 export async function addReaction(socket, { messageId, emoji }) {

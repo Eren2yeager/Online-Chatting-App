@@ -68,7 +68,11 @@ export function registerMessageHandlers(socket, io, userSockets) {
       await updateUnreadCounts(chat, socket.userId, io);
 
       // Broadcast to all chat participants
-      io.to(`chat:${chatId}`).emit("message:new", {
+      const chatRoom = `chat:${chatId}`;
+      console.log(`Broadcasting message to room: ${chatRoom}`);
+      console.log(`Room members:`, io.sockets.adapter.rooms.get(chatRoom)?.size || 0);
+      
+      io.to(chatRoom).emit("message:new", {
         message,
         chatId,
       });
@@ -289,22 +293,34 @@ export function registerMessageHandlers(socket, io, userSockets) {
    */
   socket.on("message:read", async (data, ack) => {
     try {
+      console.log("📖 Server: message:read received", { data, userId: socket.userId });
       const { messageId, chatId } = data;
 
       const message = await Message.findById(messageId);
-      if (!message)
+      if (!message) {
+        console.log("❌ Message not found:", messageId);
         return ack?.({ success: false, error: "Message not found" });
+      }
+
+      console.log("📖 Message found, current readBy:", message.readBy);
 
       if (!message.readBy.includes(socket.userId)) {
         message.readBy.push(socket.userId);
         await message.save();
 
-        // Broadcast read receipt
+        console.log("📖 Updated readBy:", message.readBy);
+
+        // Broadcast read receipt with full readBy array
         io.to(`chat:${chatId}`).emit("message:read", {
           messageId,
           userId: socket.userId,
           chatId,
+          readBy: message.readBy,
         });
+
+        console.log("📖 Broadcasted read receipt to chat:", chatId);
+      } else {
+        console.log("📖 User already in readBy array");
       }
 
       ack?.({ success: true });

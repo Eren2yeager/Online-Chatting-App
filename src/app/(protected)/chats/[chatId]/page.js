@@ -358,12 +358,12 @@ export default function ChatPage() {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <ChatBubbleLeftRightIcon className="mx-auto h-20 w-20 text-white mb-4 p-4 bg-gradient-to-r rounded-full from-blue-500 to-purple-600" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {/* <h3 className="text-lg font-medium text-gray-900 mb-2">
                   Select a conversation to start chatting
-                </h3>
-                <p className="text-gray-500">
+                </h3> */}
+                {/* <p className="text-gray-500">
                   Choose from your conversations or create a new group
-                </p>
+                </p> */}
               </div>
             </div>
           )}
@@ -386,10 +386,15 @@ export default function ChatPage() {
         isOpen={showCreateGroup}
         onClose={() => setShowCreateGroup(false)}
         onGroupCreated={(newChat) => {
-          setChats(prev => [newChat, ...prev]);
+          console.log("Group created:", newChat);
+          setChats(prev => {
+            console.log("Adding new chat to list");
+            return [newChat, ...prev];
+          });
           setSelectedChat(newChat);
           setShowCreateGroup(false);
           // Navigate to the new chat
+          console.log("Navigating to new chat:", newChat._id);
           router.push(`/chats/${newChat._id}`);
         }}
       />

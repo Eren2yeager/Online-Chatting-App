@@ -148,11 +148,10 @@ export function registerFriendHandlers(socket, io, userSockets) {
 
         // Notify both users
         const payload = { requestId, from: fromId, to: toId };
-        const fromSock = userSockets.get(fromId);
-        const toSock = userSockets.get(toId);
-
-        if (fromSock) io.to(fromSock).emit("friend:request:accepted", payload);
-        if (toSock) io.to(toSock).emit("friend:request:accepted", payload);
+        
+        // Use user rooms for more reliable delivery
+        io.to(`user:${fromId}`).emit("friend:request:accepted", payload);
+        io.to(`user:${toId}`).emit("friend:request:accepted", payload);
 
         // Create notification for requester
         await Notification.create({
@@ -172,11 +171,10 @@ export function registerFriendHandlers(socket, io, userSockets) {
         await FriendRequest.findByIdAndDelete(requestId);
 
         const payload = { requestId, from: fromId, to: toId };
-        const fromSock = userSockets.get(fromId);
-        const toSock = userSockets.get(toId);
-
-        if (fromSock) io.to(fromSock).emit("friend:request:cancelled", payload);
-        if (toSock) io.to(toSock).emit("friend:request:cancelled", payload);
+        
+        // Use user rooms for more reliable delivery
+        io.to(`user:${fromId}`).emit("friend:request:cancelled", payload);
+        io.to(`user:${toId}`).emit("friend:request:cancelled", payload);
 
         return ack?.({ success: true, message: "cancelled" });
       }
@@ -191,11 +189,10 @@ export function registerFriendHandlers(socket, io, userSockets) {
           .populate("to", "name handle image status lastSeen");
 
         const payload = { request: populated };
-        const fromSock = userSockets.get(fromId);
-        const toSock = userSockets.get(toId);
-
-        if (fromSock) io.to(fromSock).emit("friend:request:rejected", payload);
-        if (toSock) io.to(toSock).emit("friend:request:rejected", payload);
+        
+        // Use user rooms for more reliable delivery
+        io.to(`user:${fromId}`).emit("friend:request:rejected", payload);
+        io.to(`user:${toId}`).emit("friend:request:rejected", payload);
 
         return ack?.({ success: true, request: populated });
       }
@@ -234,11 +231,8 @@ export function registerFriendHandlers(socket, io, userSockets) {
         await friend.save();
       }
 
-      // Notify friend if online
-      const friendSock = userSockets.get(friendId);
-      if (friendSock) {
-        io.to(friendSock).emit("friend:removed", { userId: socket.userId });
-      }
+      // Notify friend
+      io.to(`user:${friendId}`).emit("friend:removed", { userId: socket.userId });
 
       ack?.({ success: true });
     } catch (error) {

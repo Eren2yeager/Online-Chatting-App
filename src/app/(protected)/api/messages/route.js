@@ -69,6 +69,7 @@ export async function GET(request) {
       media: 1,
       createdAt: 1,
       updatedAt: 1,
+      editedAt: 1,  // ✅ Added editedAt field
       sender: 1,
       replyTo: 1,
       system: 1,

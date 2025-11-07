@@ -24,7 +24,10 @@ export async function removeReaction(socket, { messageId }) {
 
 // Use socket for read receipts (real-time)
 export async function markChatRead(socket, { chatId, messageId }) {
-  return socketApi.markMessageRead(socket, { chatId, messageId });
+  console.log('📖 markChatRead called:', { chatId, messageId });
+  const result = await socketApi.markMessageRead(socket, { chatId, messageId });
+  console.log('📖 markChatRead result:', result);
+  return result;
 }
 
 

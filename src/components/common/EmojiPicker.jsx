@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Dynamically import EmojiPicker to avoid SSR issues
@@ -27,6 +28,12 @@ export default function EmojiPicker({
   pickerProps = {} 
 }) {
   const ref = useRef(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure component is mounted before using portal
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Handle click outside to close
   useEffect(() => {
@@ -52,7 +59,10 @@ export default function EmojiPicker({
     onClose?.();
   };
 
-  return (
+  // Don't render until mounted (prevents SSR issues)
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -60,7 +70,8 @@ export default function EmojiPicker({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: '100%', opacity: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 rounded-t-2xl shadow-2xl"
+          className="fixed inset-x-0 bottom-0 z-[99999] bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 rounded-t-2xl shadow-2xl"
+          style={{ zIndex: 99999 }} // Inline style as backup
         >
           <div ref={ref} className="p-3">
             <div className="flex items-center justify-between mb-3">
@@ -90,7 +101,8 @@ export default function EmojiPicker({
           </div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
 

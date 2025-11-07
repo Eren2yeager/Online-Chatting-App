@@ -36,7 +36,20 @@ export default function MessageContextMenu({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const showToast = useToast();
 
-  const quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🎉", "🔥", "👏"];
+  const quickReactions = [ "❤️", "😂", "😮", "😢", "🎉", "🔥"];
+
+  // Check if message is still within allowed time for edit/delete (e.g., 15 minutes)
+  const isWithinTimeLimit = () => {
+    if (!message?.createdAt) return false;
+    const messageTime = new Date(message.createdAt);
+    const now = new Date();
+    const timeDiff = now - messageTime;
+    const fifteenMinutes = 15 * 60 * 1000; // 15 minutes in milliseconds
+    return timeDiff <= fifteenMinutes;
+  };
+
+  const canEdit = isOwn && !message.isDeleted && isWithinTimeLimit();
+  const canDeleteForEveryone = isOwn && !message.isDeleted && isWithinTimeLimit();
 
   const handleReact = async (emoji) => {
     try {
@@ -154,7 +167,7 @@ ${message.reactions?.length ? `Reactions: ${message.reactions.length}` : ""}
                 key={emoji}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => handleReact(emoji)}
-                className="text-2xl rounded-lg p-1"
+                className="text-lg rounded-lg "
               >
                 {emoji}
               </motion.button>
@@ -183,8 +196,8 @@ ${message.reactions?.length ? `Reactions: ${message.reactions.length}` : ""}
             }}
           />
 
-          {/* Edit - only for own messages */}
-          {isOwn && !message.isDeleted && (
+          {/* Edit - only for own messages within time limit */}
+          {canEdit && (
             <MenuItem
               icon={<PencilIcon className="h-5 w-5" />}
               label="Edit Message"
@@ -233,8 +246,8 @@ ${message.reactions?.length ? `Reactions: ${message.reactions.length}` : ""}
             danger
           />
 
-          {/* Delete for Everyone - only for own messages */}
-          {isOwn && !message.isDeleted && (
+          {/* Delete for Everyone - only for own messages within time limit */}
+          {canDeleteForEveryone && (
             <MenuItem
               icon={<TrashIcon className="h-5 w-5" />}
               label="Delete for Everyone"
@@ -251,15 +264,17 @@ ${message.reactions?.length ? `Reactions: ${message.reactions.length}` : ""}
               danger
             />
           )}
+      {/* Emoji Picker */}
         </div>
+
       </ContextPortal>
 
-      {/* Emoji Picker */}
       <EmojiPicker
         isOpen={showEmojiPicker}
         onClose={() => setShowEmojiPicker(false)}
         onSelect={handleEmojiSelect}
       />
+
     </>
   );
 }

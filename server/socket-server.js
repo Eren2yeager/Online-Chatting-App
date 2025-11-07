@@ -52,6 +52,14 @@ const handle = app.getRequestHandler();
 
 let io = null;
 
+// Export function to get IO instance
+export function getIO() {
+  if (!io) {
+    throw new Error('Socket.IO not initialized');
+  }
+  return io;
+}
+
 // Bootstrap server
 async function start() {
   await app.prepare();
@@ -83,8 +91,19 @@ async function start() {
     // Update user presence to online
     await updateUserPresence(io, socket.userId, "online");
 
+    // Send current online users to the newly connected user
+    const onlineUserIds = Array.from(userSockets.keys());
+    socket.emit("presence:online-users", { userIds: onlineUserIds });
+
     // Join user to their chat rooms
     await joinUserToChats(socket, socket.userId, userRooms);
+
+    // Handle presence requests
+    socket.on("presence:get-online", () => {
+      const onlineUserIds = Array.from(userSockets.keys());
+      console.log(`Sending online users to ${socket.userId}:`, onlineUserIds);
+      socket.emit("presence:online-users", { userIds: onlineUserIds });
+    });
 
     // Register all event handlers
     registerChatHandlers(socket, io, userSockets);

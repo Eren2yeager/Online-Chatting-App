@@ -285,13 +285,14 @@ export function useTypingIndicator(chatId) {
  * Hook for presence updates
  */
 export function usePresence() {
-  const { socket } = useSocket();
+  const { socket, isConnected } = useSocket();
   const [onlineUsers, setOnlineUsers] = useState(new Set());
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !isConnected) return;
 
     const handlePresenceUpdate = (data) => {
+      console.log('Presence update:', data);
       setOnlineUsers(prev => {
         const newSet = new Set(prev);
         if (data.status === 'online') {
@@ -303,12 +304,50 @@ export function usePresence() {
       });
     };
 
+    // Listen for initial online users list
+    const handleOnlineUsers = (data) => {
+      console.log('Received online users:', data.userIds?.length || 0, 'users');
+      setOnlineUsers(new Set(data.userIds || []));
+    };
+
     socket.on('presence:update', handlePresenceUpdate);
+    socket.on('presence:online-users', handleOnlineUsers);
 
     return () => {
       socket.off('presence:update', handlePresenceUpdate);
+      socket.off('presence:online-users', handleOnlineUsers);
     };
-  }, [socket]);
+  }, [socket, isConnected]);
+
+  // Separate effect to request online users when connected
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    let retryCount = 0;
+    const maxRetries = 3;
+    let retryTimer;
+
+    const requestOnlineUsers = () => {
+      console.log(`Requesting online users (attempt ${retryCount + 1})...`);
+      socket.emit('presence:get-online');
+      retryCount++;
+
+      // Retry if no response after 2 seconds
+      if (retryCount < maxRetries) {
+        retryTimer = setTimeout(() => {
+          requestOnlineUsers();
+        }, 2000);
+      }
+    };
+
+    // Initial request with small delay
+    const timer = setTimeout(requestOnlineUsers, 100);
+
+    return () => {
+      clearTimeout(timer);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [socket, isConnected]);
 
   return Array.from(onlineUsers);
 }

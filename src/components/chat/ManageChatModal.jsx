@@ -49,7 +49,7 @@ export default function ManageChatModal({
   const admins = chat?.admins || [];
   const isGroup = !!chat?.isGroup;
   const showToast = useToast?.() || (() => {});
-  const { setMediaToView } = useMediaFullView();
+  const { openMediaFullView } = useMediaFullView();
   const { data: session } = useSession();
   const { emitAck } = useSocketEmitter();
 
@@ -275,7 +275,7 @@ export default function ManageChatModal({
   };
 
   const handleMediaClick = (mediaArray, initialIndex = 0) => {
-    setMediaToView({ media: mediaArray, initialIndex });
+    openMediaFullView({ media: mediaArray, initialIndex });
   };
 
   const currentMemberIds = useMemo(

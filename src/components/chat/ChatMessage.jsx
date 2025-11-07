@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   EllipsisVerticalIcon,
@@ -11,8 +12,11 @@ import {
   SpeakerWaveIcon,
   DocumentTextIcon,
   ArchiveBoxIcon,
+  CheckIcon,
+  CheckCircleIcon,
 } from "@heroicons/react/24/outline";
-import { Avatar } from "@/components/ui";
+import { UserAvatar } from "@/components/ui";
+import { usePresence } from "@/lib/socket";
 import { useMediaFullView } from "@/components/layout/mediaFullViewContext";
 import MessageContextMenu from "./MessageContextMenu.jsx";
 
@@ -29,8 +33,11 @@ export default function ChatMessage({
   onReact,
   showAvatar = true,
 }) {
+  const router = useRouter();
+  const onlineUsers = usePresence();
   const [showMenu, setShowMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [readBy, setReadBy] = useState(message.readBy || []);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -39,9 +46,14 @@ export default function ChatMessage({
   const messageRef = useRef(null);
   const audioRef = useRef(null);
   const videoRef = useRef(null);
-  const { setMediaToView } = useMediaFullView();
+  const { openMediaFullView } = useMediaFullView();
 
   const isSystem = message.type === "system";
+
+  // Update readBy when message prop changes (handled by ChatWindow)
+  useEffect(() => {
+    setReadBy(message.readBy || []);
+  }, [message.readBy]);
   const isDeleted = message.isDeleted === true;
   const hasMedia = message.media && message.media.length > 0;
   const hasText = message.text && message.text.trim().length > 0;
@@ -87,7 +99,7 @@ export default function ChatMessage({
     const viewableIndex = viewableMedia.findIndex(
       (m) => m.url === mediaArray[index].url
     );
-    setMediaToView({
+    openMediaFullView({
       media: viewableMedia,
       initialIndex: Math.max(0, viewableIndex),
     });
@@ -466,56 +478,105 @@ export default function ChatMessage({
 
   // System message
   if (isSystem) {
-    const getSystemMessageText = () => {
+    const renderClickableName = (user, name) => {
+      if (user?.handle) {
+        return (
+          <button
+            onClick={() => router.push(`/profile/${user.handle}`)}
+            className="font-semibold text-gray-800 hover:text-blue-600 hover:underline transition-colors"
+          >
+            {name || user.name || "Someone"}
+          </button>
+        );
+      }
+      return <span className="font-semibold text-gray-800">{name || "Someone"}</span>;
+    };
+
+    const renderSystemMessage = () => {
       if (!message.system) return message.text || "System message";
 
       const { event, targets, previous, next } = message.system;
-      const senderName = message.sender?.name || "Someone";
+      const sender = message.sender;
+      const senderName = sender?.name || "Someone";
 
       switch (event) {
         case "member_added":
           if (targets && targets.length > 0) {
-            const targetNames = targets
-              .map((t) => t.name || "Someone")
-              .join(", ");
-            return `${senderName} added ${targetNames}`;
+            return (
+              <>
+                {renderClickableName(sender, senderName)} added{" "}
+                {targets.map((target, index) => (
+                  <span key={target._id || index}>
+                    {index > 0 && ", "}
+                    {renderClickableName(target, target.name)}
+                  </span>
+                ))}
+              </>
+            );
           }
-          return `${senderName} added a member`;
+          return <>{renderClickableName(sender, senderName)} added a member</>;
 
         case "member_removed":
           if (targets && targets.length > 0) {
-            const targetNames = targets
-              .map((t) => t.name || "Someone")
-              .join(", ");
-            return `${senderName} removed ${targetNames}`;
+            return (
+              <>
+                {renderClickableName(sender, senderName)} removed{" "}
+                {targets.map((target, index) => (
+                  <span key={target._id || index}>
+                    {index > 0 && ", "}
+                    {renderClickableName(target, target.name)}
+                  </span>
+                ))}
+              </>
+            );
           }
-          return `${senderName} removed a member`;
+          return <>{renderClickableName(sender, senderName)} removed a member</>;
 
         case "name_changed":
-          return `${senderName} changed the group name${
-            previous ? ` from "${previous}"` : ""
-          }${next ? ` to "${next}"` : ""}`;
+          return (
+            <>
+              {renderClickableName(sender, senderName)} changed the group name
+              {previous && ` from "${previous}"`}
+              {next && ` to "${next}"`}
+            </>
+          );
 
         case "image_changed":
-          return `${senderName} changed the group icon`;
+          return <>{renderClickableName(sender, senderName)} changed the group icon</>;
 
         case "admin_promoted":
           if (targets && targets.length > 0) {
-            const targetNames = targets
-              .map((t) => t.name || "Someone")
-              .join(", ");
-            return `${senderName} promoted ${targetNames} to admin`;
+            return (
+              <>
+                {renderClickableName(sender, senderName)} promoted{" "}
+                {targets.map((target, index) => (
+                  <span key={target._id || index}>
+                    {index > 0 && ", "}
+                    {renderClickableName(target, target.name)}
+                  </span>
+                ))}{" "}
+                to admin
+              </>
+            );
           }
-          return `${senderName} promoted a member to admin`;
+          return <>{renderClickableName(sender, senderName)} promoted a member to admin</>;
 
         case "admin_demoted":
           if (targets && targets.length > 0) {
-            const targetNames = targets
-              .map((t) => t.name || "Someone")
-              .join(", ");
-            return `${senderName} demoted ${targetNames} from admin`;
+            return (
+              <>
+                {renderClickableName(sender, senderName)} demoted{" "}
+                {targets.map((target, index) => (
+                  <span key={target._id || index}>
+                    {index > 0 && ", "}
+                    {renderClickableName(target, target.name)}
+                  </span>
+                ))}{" "}
+                from admin
+              </>
+            );
           }
-          return `${senderName} demoted an admin`;
+          return <>{renderClickableName(sender, senderName)} demoted an admin</>;
 
         default:
           return message.text || "System message";
@@ -526,7 +587,7 @@ export default function ChatMessage({
       <div className="flex justify-center my-2 sm:my-3 px-2">
         <div className="px-2 min-[400px]:px-2.5 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-100 rounded-full shadow-sm max-w-[90%] min-[400px]:max-w-[85%]">
           <p className="text-[9px] min-[400px]:text-[10px] leading-tight text-gray-600 text-center font-medium break-words">
-            {getSystemMessageText()}
+            {renderSystemMessage()}
           </p>
         </div>
       </div>
@@ -544,11 +605,13 @@ export default function ChatMessage({
       >
         {/* Avatar */}
         {showAvatar && !isOwn && (
-          <div className="flex-shrink-0 w-7 min-[400px]:w-8 sm:w-10">
-            <Avatar
-              src={message.sender?.image}
-              alt={message.sender?.name}
+          <div className="flex-shrink-0 mt-1">
+            <UserAvatar
+              user={message.sender}
               size="sm"
+              showStatus={false}
+              showName={false}
+              onlineUsers={onlineUsers}
             />
           </div>
         )}
@@ -559,11 +622,18 @@ export default function ChatMessage({
             isOwn ? "items-end" : "items-start"
           } max-w-[90%] min-[400px]:max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] min-w-0`}
         >
-          {/* Sender Name */}
+          {/* Sender Name - Clickable */}
           {!isOwn && (
-            <span className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-gray-700 mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full">
+            <button
+              onClick={() => {
+                if (message.sender?.handle) {
+                  router.push(`/profile/${message.sender.handle}`);
+                }
+              }}
+              className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full text-left"
+            >
               {message.sender?.name || "Unknown"}
-            </span>
+            </button>
           )}
 
           {/* Deleted Message Bubble */}
@@ -595,12 +665,26 @@ export default function ChatMessage({
                 </p>
               </div>
 
-              {/* Timestamp */}
-              <div className="text-[8px] min-[400px]:text-[9px] sm:text-[10px] mt-0.5 sm:mt-1 text-gray-500">
-                {new Date(message.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+              {/* Timestamp with read status and edited indicator */}
+              <div className="flex items-center gap-1 text-[8px] min-[400px]:text-[9px] sm:text-[10px] mt-0.5 sm:mt-1 text-gray-500">
+                <span>
+                  {new Date(message.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+                {message.editedAt && (
+                  <span className="italic">(edited)</span>
+                )}
+                {isOwn && (
+                  <div className="flex items-center ml-1">
+                    {readBy && readBy.length > 0 ? (
+                      <CheckCircleIcon className="w-2.5 h-2.5 text-blue-500" title={`Read by ${readBy.length} user(s)`} />
+                    ) : (
+                      <CheckIcon className="w-2.5 h-2.5 text-gray-400" title="Sent" />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -619,12 +703,13 @@ export default function ChatMessage({
     >
       {/* Avatar */}
       {showAvatar && !isOwn && (
-        <div className="flex-shrink-0 w-7 min-[400px]:w-6 sm:w-10">
-          <Avatar
-            src={message.sender?.image}
-            alt={message.sender?.name}
+        <div className="flex-shrink-0 mt-1">
+          <UserAvatar
+            user={message.sender}
             size="sm"
-            className="max-w-[30px] max-h-[30px]"
+            showStatus={false}
+            showName={false}
+            onlineUsers={onlineUsers}
           />
         </div>
       )}
@@ -636,11 +721,18 @@ export default function ChatMessage({
         } max-w-[90%] min-[400px]:max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] min-w-0`}
         onContextMenu={handleContextMenu}
       >
-        {/* Sender Name */}
+        {/* Sender Name - Clickable */}
         {!isOwn && (
-          <span className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-gray-700 mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full">
+          <button
+            onClick={() => {
+              if (message.sender?.handle) {
+                router.push(`/profile/${message.sender.handle}`);
+              }
+            }}
+            className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full text-left"
+          >
             {message.sender?.name || "Unknown"}
-          </span>
+          </button>
         )}
 
         {/* Message Bubble */}
@@ -665,18 +757,29 @@ export default function ChatMessage({
               </p>
             )}
 
-            {/* Timestamp */}
+            {/* Timestamp with read status and edited indicator */}
             <div
-              className={`text-[8px] min-[400px]:text-[9px] sm:text-[10px] mt-0.5 sm:mt-1 ${
+              className={`flex items-center gap-1 text-[8px] min-[400px]:text-[9px] sm:text-[10px] mt-0.5 sm:mt-1 ${
                 isOwn ? "text-white/70" : "text-gray-500"
               }`}
             >
-              {new Date(message.createdAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-              {message.edited && (
-                <span className="ml-0.5 sm:ml-1">(edited)</span>
+              <span>
+                {new Date(message.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              {message.editedAt && (
+                <span className="italic">(edited)</span>
+              )}
+              {isOwn && (
+                <div className="flex items-center ml-1">
+                  {readBy && readBy.length > 0 ? (
+                    <CheckCircleIcon className={`w-2.5 h-2.5 ${isOwn ? "text-white/80" : "text-blue-500"}`} title={`Read by ${readBy.length} user(s)`} />
+                  ) : (
+                    <CheckIcon className={`w-2.5 h-2.5 ${isOwn ? "text-white/60" : "text-gray-400"}`} title="Sent" />
+                  )}
+                </div>
               )}
             </div>
           </div>

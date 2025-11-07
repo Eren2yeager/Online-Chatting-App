@@ -121,3 +121,112 @@ export async function GET(request) {
     return serverError('Error fetching chats');
   }
 }
+
+/**
+ * POST /api/chats
+ * Create a new chat (direct or group)
+ */
+export async function POST(request) {
+  try {
+    // Rate limiting
+    const rateLimitResult = await rateLimit(request, 20, 60 * 1000); // 20 chat creations per minute
+    if (!rateLimitResult.success) {
+      const response = tooManyRequests();
+      applyRateLimitHeaders(response, rateLimitResult);
+      return response;
+    }
+    
+    // Check authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return unauthorized('Authentication required');
+    }
+
+    await connectDB();
+
+    const userId = session.user.id;
+    const body = await request.json();
+    const { isGroup, participants, name, description, privacy } = body;
+
+    // Validate participants
+    if (!participants || !Array.isArray(participants) || participants.length === 0) {
+      return serverError('Participants are required');
+    }
+
+    // For direct chats, ensure only 1 other participant
+    if (!isGroup && participants.length !== 1) {
+      return serverError('Direct chats must have exactly 1 other participant');
+    }
+
+    // For group chats, validate name
+    if (isGroup && (!name || name.trim().length === 0)) {
+      return serverError('Group name is required');
+    }
+
+    // Check if direct chat already exists
+    if (!isGroup) {
+      const otherUserId = participants[0];
+      const existingChat = await Chat.findOne({
+        isGroup: false,
+        participants: { $all: [userId, otherUserId], $size: 2 }
+      });
+
+      if (existingChat) {
+        // Populate the existing chat before returning
+        await existingChat.populate([
+          { path: 'participants', select: 'name image handle status lastSeen' },
+          { path: 'admins', select: 'name image handle' },
+          { path: 'createdBy', select: 'name image handle' }
+        ]);
+        return ok({ chat: existingChat });
+      }
+    }
+
+    // Create new chat
+    const chatData = {
+      isGroup: !!isGroup,
+      participants: [userId, ...participants],
+      createdBy: userId,
+    };
+
+    if (isGroup) {
+      chatData.name = name.trim();
+      chatData.description = description?.trim() || '';
+      chatData.privacy = privacy || 'public';
+      chatData.admins = [userId]; // Creator is admin
+    }
+
+    const chat = await Chat.create(chatData);
+
+    // Populate the chat
+    await chat.populate([
+      { path: 'participants', select: 'name image handle status lastSeen' },
+      { path: 'admins', select: 'name image handle' },
+      { path: 'createdBy', select: 'name image handle' }
+    ]);
+
+    // Emit socket event to notify participants
+    try {
+      const { getIO } = await import('../../../../server/socket-server.js');
+      const io = getIO();
+      
+      // Notify all participants about the new chat
+      for (const participantId of chat.participants) {
+        if (participantId.toString() !== userId) {
+          io.to(`user:${participantId}`).emit("chat:created", {
+            chat: chat.toObject(),
+          });
+        }
+      }
+    } catch (socketError) {
+      console.error('Error emitting chat:created event:', socketError);
+      // Don't fail the request if socket emission fails
+    }
+
+    return ok({ chat });
+
+  } catch (error) {
+    console.error('Error creating chat:', error);
+    return serverError('Error creating chat');
+  }
+}
