@@ -747,7 +747,7 @@ export default function ChatMessage({
       <div
         className={`flex flex-col ${
           isOwn ? "items-end" : "items-start"
-        } max-w-[90%] min-[400px]:max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] min-w-0`}
+        } max-w-[90%] min-[400px]:max-w-[80%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] min-w-0`}
         onContextMenu={handleContextMenu}
       >
         {/* Sender Name - Clickable */}

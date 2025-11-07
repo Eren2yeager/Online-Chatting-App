@@ -344,10 +344,7 @@ export default function ChatsPage() {
               onSearchChange={setSearchQuery}
               onCreateGroup={() => setShowCreateGroup(true)}
               onShowFriendRequests={() => setShowFriendRequests(true)}
-              onShowAddFriend={() => {
-                console.log('Add Friend clicked!');
-                setShowAddFriend(true);
-              }}
+              onShowAddFriend={() => setShowAddFriend(true)}
               loading={loading}
               friendRequestCount={friendRequestCount}
             />
@@ -407,22 +404,9 @@ export default function ChatsPage() {
 
       <AddFriendModal
         isOpen={showAddFriend}
-        onClose={() => {
-          console.log('Closing AddFriendModal');
-          setShowAddFriend(false);
-        }}
-        onFriendAdded={() => {
-          console.log('Friend added');
-          setShowAddFriend(false);
-        }}
+        onClose={() => setShowAddFriend(false)}
+        onFriendAdded={() => setShowAddFriend(false)}
       />
-      
-      {/* Debug: Show state */}
-      {showAddFriend && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg z-[9999]">
-          AddFriend Modal State: OPEN
-        </div>
-      )}
     </>
   );
 }

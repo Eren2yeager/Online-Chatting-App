@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
   // Enable experimental features for better performance
   serverExternalPackages: ['mongoose'],
   
@@ -29,7 +30,8 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
+            // FIXED: Allow camera for self, block microphone and geolocation
+            value: 'camera=(self), microphone=(), geolocation=()',
           },
         ],
       },

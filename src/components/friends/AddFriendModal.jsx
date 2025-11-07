@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Scanner } from '@yudiel/react-qr-scanner';
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Scanner } from "@yudiel/react-qr-scanner";
 import {
   XMarkIcon,
   UserPlusIcon,
   QrCodeIcon,
   MagnifyingGlassIcon,
-} from '@heroicons/react/24/outline';
-import { Modal, ModalBody, Button, Input } from '@/components/ui';
-import { useSocketEmitter } from '@/lib/socket';
-import { useToast } from '@/components/layout/ToastContext';
-import { useRouter } from 'next/navigation';
+} from "@heroicons/react/24/outline";
+import { Modal, ModalBody, Button, Input } from "@/components/ui";
+import { useSocketEmitter } from "@/lib/socket";
+import { useToast } from "@/components/layout/ToastContext";
+import { useRouter } from "next/navigation";
 
 /**
  * Add Friend Modal with Manual and QR Scanner options
@@ -21,39 +21,41 @@ export default function AddFriendModal({ isOpen, onClose, onFriendAdded }) {
   const { emitAck } = useSocketEmitter();
   const toast = useToast();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('manual'); // 'manual' or 'qr'
+  const [activeTab, setActiveTab] = useState("manual"); // 'manual' or 'qr'
   const [loading, setLoading] = useState(false);
-  const [cameraPermission, setCameraPermission] = useState('checking'); // 'checking', 'prompt', 'granted', 'denied'
+  const [scannerError, setScannerError] = useState(null);
+  const [invalidQR, setInvalidQR] = useState(false);
+  const [scannerActive, setScannerActive] = useState(true);
   const [formData, setFormData] = useState({
-    handle: '',
-    message: '',
+    handle: "",
+    message: "",
   });
 
   const handleManualAdd = async (e) => {
     e.preventDefault();
     if (!formData.handle.trim()) {
-      toast({ text: 'Please enter a handle' });
+      toast({ text: "Please enter a handle" });
       return;
     }
 
     try {
       setLoading(true);
-      const res = await emitAck('friend:request:create', {
-        handle: formData.handle.replace('@', ''),
+      const res = await emitAck("friend:request:create", {
+        handle: formData.handle.replace("@", ""),
         message: formData.message,
       });
 
       if (res?.success) {
-        toast({ text: 'Friend request sent successfully!' });
-        setFormData({ handle: '', message: '' });
+        toast({ text: "Friend request sent successfully!" });
+        setFormData({ handle: "", message: "" });
         onFriendAdded?.();
         onClose();
       } else {
-        toast({ text: res?.error || 'Failed to send friend request' });
+        toast({ text: res?.error || "Failed to send friend request" });
       }
     } catch (error) {
-      console.error('Error sending friend request:', error);
-      toast({ text: 'Failed to send friend request' });
+      console.error("Error sending friend request:", error);
+      toast({ text: "Failed to send friend request" });
     } finally {
       setLoading(false);
     }
@@ -62,105 +64,52 @@ export default function AddFriendModal({ isOpen, onClose, onFriendAdded }) {
   const handleQRScan = (result) => {
     if (result && result[0]?.rawValue) {
       const scannedData = result[0].rawValue;
-      console.log('QR Code scanned:', scannedData);
+      console.log("QR Code scanned:", scannedData);
 
       // Check if it's a profile URL
-      if (scannedData.includes('/profile/')) {
-        const handle = scannedData.split('/profile/')[1];
+      if (scannedData.includes("/profile/")) {
+        const handle = scannedData.split("/profile/")[1];
         if (handle) {
           toast({ text: `Navigating to @${handle}'s profile` });
           onClose();
           router.push(`/profile/${handle}`);
         }
       } else {
-        toast({ text: 'Invalid QR code' });
+        // Invalid QR code - stop scanner and show error
+        setScannerActive(false);
+        setInvalidQR(true);
       }
     }
   };
 
   const handleQRError = (error) => {
-    console.error('QR Scanner error:', error);
-    // Only set denied if it's actually a permission error
-    if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
-      setCameraPermission('denied');
+    console.error("QR Scanner error:", error);
+    setScannerActive(false);
+
+    if (error.name === "NotAllowedError") {
+      setScannerError({
+        type: "permission",
+        message:
+          "Camera permission denied. Please enable camera access in your browser settings.",
+      });
+    } else if (error.name === "NotFoundError") {
+      setScannerError({
+        type: "notfound",
+        message: "No camera found on this device.",
+      });
+    } else {
+      setScannerError({
+        type: "error",
+        message: "Error accessing camera: " + error.message,
+      });
     }
   };
 
-  const requestCameraPermission = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      // Stop the stream immediately, we just needed to trigger permission
-      stream.getTracks().forEach(track => track.stop());
-      setCameraPermission('granted');
-      toast({ text: 'Camera access granted!' });
-    } catch (error) {
-      console.error('Camera permission error:', error);
-      // Just show toast, keep showing the enable button
-      if (error.name === 'NotAllowedError') {
-        toast({ text: 'Camera access denied. Please allow camera access in your browser settings.' });
-      } else if (error.name === 'NotFoundError') {
-        toast({ text: 'No camera found on this device.' });
-      } else {
-        toast({ text: 'Failed to access camera. Please try again.' });
-      }
-    }
+  const handleRetryScan = () => {
+    setInvalidQR(false);
+    setScannerError(null);
+    setScannerActive(true);
   };
-
-  // Check camera permission when switching to QR tab
-  useEffect(() => {
-    const checkCameraAccess = async () => {
-      if (activeTab === 'qr' && isOpen) {
-        console.log('Checking camera access...');
-        
-        // Check if camera API is available
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          console.log('Camera API not available');
-          toast({ text: 'Camera not supported on this device' });
-          setCameraPermission('denied');
-          return;
-        }
-
-        // Check permission status using Permissions API if available
-        if (navigator.permissions && navigator.permissions.query) {
-          try {
-            const permissionStatus = await navigator.permissions.query({ name: 'camera' });
-            console.log('Permission status:', permissionStatus.state);
-            
-            if (permissionStatus.state === 'granted') {
-              // Permission already granted, try to access camera
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach(track => track.stop());
-                setCameraPermission('granted');
-                console.log('Camera access confirmed');
-                return;
-              } catch (error) {
-                console.log('Camera access failed despite permission:', error);
-                toast({ text: 'Failed to access camera. Please check your camera settings.' });
-                setCameraPermission('prompt');
-                return;
-              }
-            } else {
-              // Denied or prompt state - show enable button
-              setCameraPermission('prompt');
-              return;
-            }
-          } catch (error) {
-            console.log('Permissions API not supported:', error);
-          }
-        }
-        
-        // Fallback: Show prompt button (don't auto-request)
-        console.log('Showing enable camera button');
-        setCameraPermission('prompt');
-      } else if (activeTab !== 'qr') {
-        // Reset when switching away from QR tab
-        setCameraPermission('checking');
-      }
-    };
-
-    checkCameraAccess();
-  }, [activeTab, isOpen]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" showCloseButton={false}>
@@ -179,22 +128,22 @@ export default function AddFriendModal({ isOpen, onClose, onFriendAdded }) {
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
           <button
-            onClick={() => setActiveTab('manual')}
+            onClick={() => setActiveTab("manual")}
             className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-              activeTab === 'manual'
-                ? 'bg-blue-500 text-white shadow-md'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              activeTab === "manual"
+                ? "bg-blue-500 text-white shadow-md"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
             <UserPlusIcon className="w-5 h-5" />
             Manual Add
           </button>
           <button
-            onClick={() => setActiveTab('qr')}
+            onClick={() => setActiveTab("qr")}
             className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-              activeTab === 'qr'
-                ? 'bg-blue-500 text-white shadow-md'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              activeTab === "qr"
+                ? "bg-blue-500 text-white shadow-md"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
             <QrCodeIcon className="w-5 h-5" />
@@ -204,7 +153,7 @@ export default function AddFriendModal({ isOpen, onClose, onFriendAdded }) {
 
         {/* Content */}
         <AnimatePresence mode="wait">
-          {activeTab === 'manual' ? (
+          {activeTab === "manual" ? (
             <motion.div
               key="manual"
               initial={{ opacity: 0, x: -20 }}
@@ -257,7 +206,7 @@ export default function AddFriendModal({ isOpen, onClose, onFriendAdded }) {
                     className="flex-1"
                     disabled={loading}
                   >
-                    {loading ? 'Sending...' : 'Send Request'}
+                    {loading ? "Sending..." : "Send Request"}
                   </Button>
                   <Button
                     type="button"
@@ -279,53 +228,110 @@ export default function AddFriendModal({ isOpen, onClose, onFriendAdded }) {
               transition={{ duration: 0.2 }}
             >
               <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <p className="text-sm text-gray-600 text-center">
-                    Scan a friend's profile QR code to visit their profile
-                  </p>
-                </div>
+                {/* Instructions */}
+                {!scannerError && !invalidQR && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-blue-700 text-center font-medium">
+                      📷 Scan a friend's profile QR code to visit their profile
+                    </p>
+                    <p className="text-xs text-blue-600 text-center mt-1">
+                      Allow camera access when prompted by your browser
+                    </p>
+                  </div>
+                )}
 
-                {cameraPermission === 'granted' ? (
+                {/* Scanner Error */}
+                {scannerError && (
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6 text-center">
+                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <XMarkIcon className="w-8 h-8 text-red-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-red-900 mb-2">
+                      Camera Access Error
+                    </h3>
+                    <p className="text-sm text-red-700 mb-4">
+                      {scannerError.message}
+                    </p>
+                    {scannerError.type === "permission" && (
+                      <p className="text-xs text-red-600 mb-4">
+                        Click the camera icon in your browser's address bar or
+                        check browser settings.
+                      </p>
+                    )}
+                    <Button
+                      variant="primary"
+                      onClick={handleRetryScan}
+                      className="mx-auto"
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                )}
+
+                {/* Invalid QR Code */}
+                {invalidQR && (
+                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-6 text-center">
+                    <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <QrCodeIcon className="w-8 h-8 text-yellow-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-yellow-900 mb-2">
+                      Invalid QR Code
+                    </h3>
+                    <p className="text-sm text-yellow-700 mb-4">
+                      This QR code is not a valid profile QR code. Please scan
+                      a profile QR code from the app.
+                    </p>
+                    <Button
+                      variant="primary"
+                      onClick={handleRetryScan}
+                      className="mx-auto"
+                    >
+                      Scan Again
+                    </Button>
+                  </div>
+                )}
+
+                {/* Scanner */}
+                {scannerActive && !scannerError && !invalidQR && (
                   <>
-                    <div className="relative aspect-square max-w-md mx-auto rounded-lg overflow-hidden bg-black">
+                    <div className="relative aspect-square max-w-md mx-auto rounded-xl overflow-hidden bg-black shadow-lg">
                       <Scanner
                         onScan={handleQRScan}
                         onError={handleQRError}
                         constraints={{
-                          facingMode: 'environment',
+                          facingMode: "environment",
                         }}
                         styles={{
                           container: {
-                            width: '100%',
-                            height: '100%',
+                            width: "100%",
+                            height: "100%",
+                          },
+                          video: {
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
                           },
                         }}
                       />
+
+                      {/* Scanning overlay */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        <div className="absolute inset-0 border-2 border-white opacity-30 m-12 rounded-lg"></div>
+                      </div>
                     </div>
 
-                    <div className="text-center text-sm text-gray-500 mt-4">
-                      <p>Position the QR code within the frame</p>
+                    <div className="text-center text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+                      <p className="font-medium">
+                        Position the QR code within the frame
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        The scan will happen automatically
+                      </p>
                     </div>
                   </>
-                ) : (
-                  <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 text-center">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <QrCodeIcon className="w-8 h-8 text-blue-600" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-blue-900 mb-2">
-                      Camera Permission Required
-                    </h3>
-                    <p className="text-sm text-blue-700 mb-4">
-                      We need access to your camera to scan QR codes.
-                    </p>
-                    <Button
-                      variant="primary"
-                      onClick={requestCameraPermission}
-                      className="mx-auto"
-                    >
-                      Enable Camera
-                    </Button>
-                  </div>
                 )}
 
                 <Button
