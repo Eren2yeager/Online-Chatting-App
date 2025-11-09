@@ -294,9 +294,14 @@ export default function OverviewTab({
           {/* Invite Link */}
           {isGroup && (
             <div className="pt-4 border-t border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">
                 Invite Link
               </h4>
+              <p className="text-xs text-gray-500 mb-3">
+                {chat.privacy === "admin_only" 
+                  ? "Share this link to let people request to join (requires admin approval)"
+                  : "Share this link to let anyone join instantly"}
+              </p>
               <div className="flex gap-2">
                 <input
                   type="text"

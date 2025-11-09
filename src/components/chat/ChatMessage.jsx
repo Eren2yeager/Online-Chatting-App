@@ -607,6 +607,22 @@ export default function ChatMessage({
           }
           return <>{renderClickableName(sender, senderName)} demoted an admin</>;
 
+        case "member_joined_via_invite":
+          if (targets && targets.length > 0) {
+            return (
+              <>
+                {targets.map((target, index) => (
+                  <span key={target._id || index}>
+                    {index > 0 && ", "}
+                    {renderClickableName(target, target.name)}
+                  </span>
+                ))}{" "}
+                joined via invite link
+              </>
+            );
+          }
+          return <>{renderClickableName(sender, senderName)} joined via invite link</>;
+
         default:
           return message.text || "System message";
       }

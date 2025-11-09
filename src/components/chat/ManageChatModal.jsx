@@ -94,7 +94,7 @@ export default function ManageChatModal({
   const generateInviteLink = () => {
     if (chat?._id && isGroup) {
       const baseUrl = window.location.origin;
-      setInviteLink(`${baseUrl}/invite/${chat._id}`);
+      setInviteLink(`${baseUrl}/invite/group/${chat._id}`);
     } else {
       setInviteLink("");
     }

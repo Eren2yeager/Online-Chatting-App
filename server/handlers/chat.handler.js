@@ -552,4 +552,99 @@ export function registerChatHandlers(socket, io, userSockets) {
       ack?.({ success: false, error: "Internal server error" });
     }
   });
+
+  /**
+   * Join group via invite link
+   */
+  socket.on("chat:member:add:via-invite", async (data, ack) => {
+    try {
+      const { chatId, userId } = data || {};
+
+      if (!chatId || !userId) {
+        return ack?.({ success: false, error: "chatId and userId required" });
+      }
+
+      // Verify the requesting user is the same as userId
+      if (socket.userId !== userId) {
+        return ack?.({ success: false, error: "Unauthorized" });
+      }
+
+      const chat = await Chat.findById(chatId)
+        .populate("participants", "name handle image status lastSeen")
+        .populate("admins", "name handle image");
+
+      if (!chat) {
+        return ack?.({ success: false, error: "Group not found" });
+      }
+
+      if (!chat.isGroup) {
+        return ack?.({ success: false, error: "This is not a group chat" });
+      }
+
+      // Check if already a member
+      const isAlreadyMember = chat.participants.some(
+        (p) => p._id.toString() === userId
+      );
+      if (isAlreadyMember) {
+        return ack?.({ success: false, error: "Already a member" });
+      }
+
+      // Check privacy settings
+      const requiresApproval = chat.privacy === "admin_only";
+
+      if (requiresApproval) {
+        // TODO: Implement join request system for admin approval
+        // For now, we'll return a pending status
+        return ack?.({
+          success: true,
+          requiresApproval: true,
+          message: "Join request sent to admins",
+        });
+      }
+
+      // Add user to participants (member_invite or open group)
+      chat.participants.push(userId);
+      await chat.save();
+
+      // Get updated chat
+      const updatedChat = await Chat.findById(chatId)
+        .populate("participants", "name handle image status lastSeen")
+        .populate("admins", "name handle image")
+        .populate("createdBy", "name handle image");
+
+      // Create system message for invite link join
+      const systemMessage = await Message.create({
+        chatId,
+        sender: userId,
+        type: "system",
+        text: "",
+        system: { event: "member_joined_via_invite", targets: [userId] },
+      });
+      await systemMessage.populate("sender", "name image handle");
+
+      // Join the user to the chat room
+      const userSocketId = userSockets.get(userId);
+      if (userSocketId) {
+        const userSocket = io.sockets.sockets.get(userSocketId);
+        if (userSocket) {
+          userSocket.join(`chat:${chatId}`);
+        }
+      }
+
+      // Broadcast to all participants
+      io.to(`chat:${chatId}`).emit("message:new", {
+        message: systemMessage,
+        chatId,
+      });
+      io.to(`chat:${chatId}`).emit("chat:updated", { chat: updatedChat });
+
+      // Notify the new member
+      io.to(`user:${userId}`).emit("chat:created", { chat: updatedChat });
+
+      ack?.({ success: true, requiresApproval: false, chat: updatedChat });
+    } catch (error) {
+      console.error("chat:member:add:via-invite error:", error);
+      ack?.({ success: false, error: "Internal server error" });
+    }
+  });
 }
