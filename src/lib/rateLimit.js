@@ -155,18 +155,21 @@ const rateLimiter = new RateLimiter();
 export async function rateLimit(request, maxRequests, windowMs) {
   try {
     // Get IP address
-    const ip = request.headers.get('x-forwarded-for') || 
-              request.headers.get('x-real-ip') || 
+    const ip = request.headers?.get('x-forwarded-for') || 
+              request.headers?.get('x-real-ip') || 
               'unknown';
     
     // Get user ID from session if available
     let userId = 'anonymous';
     try {
-      const { cookies } = request;
-      const sessionToken = cookies.get('next-auth.session-token')?.value;
-      if (sessionToken) {
-        // This is a simplified example - in a real app, you'd verify the session token
-        userId = sessionToken.slice(0, 10); // Use part of session token as user identifier
+      // Try to get session token from request cookies header
+      const cookieHeader = request.headers?.get('cookie');
+      if (cookieHeader) {
+        const sessionTokenMatch = cookieHeader.match(/(?:^|;\s*)(?:__Secure-)?next-auth\.session-token=([^;]+)/);
+        if (sessionTokenMatch) {
+          // Use part of session token as user identifier
+          userId = sessionTokenMatch[1].slice(0, 10);
+        }
       }
     } catch (error) {
       console.error('Error getting user ID for rate limiting:', error);

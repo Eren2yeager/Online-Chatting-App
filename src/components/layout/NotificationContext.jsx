@@ -1,251 +1,217 @@
-"use client";
+'use client';
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-} from "react";
-import { useSession } from "next-auth/react";
-import { useSocket, useSocketEmitter } from "@/lib/socket";
-import {
-  fetchNotifications as apiFetchNotifications,
-  markNotificationAsRead as apiMarkAsRead,
-  markAllNotificationsAsRead as apiMarkAllAsRead,
-  deleteNotification as apiDeleteNotification,
-  getUnreadCount as apiGetUnreadCount,
-} from "@/lib/client/notifications";
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useSocket } from '@/lib/socket';
+import * as socketNotifications from '@/lib/client/socket-notifications';
+import * as browserNotifications from '@/lib/browserNotifications';
+import notificationSound from '@/lib/notificationSound';
+import silentMode from '@/lib/silentMode';
 
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
-  const { data: session } = useSession();
   const { socket, isConnected } = useSocket();
-  const { emitAck } = useSocketEmitter();
-
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(1);
 
-  // Fetch notifications
-  const fetchNotifications = useCallback(
-    async (pageNum = 1, append = false) => {
-      if (!session?.user) return;
-
-      try {
-        setLoading(true);
-        const data = await apiFetchNotifications(pageNum, 20);
-
-        if (append) {
-          setNotifications((prev) => [...prev, ...data.data]);
-        } else {
-          setNotifications(data.data);
-        }
-
-        setUnreadCount(data.unreadCount);
-        setHasMore(data.pagination.hasMore);
-        setPage(pageNum);
-      } catch (error) {
-        console.error("Error fetching notifications:", error);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [session]
-  );
-
-  // Load more notifications
-  const loadMore = useCallback(() => {
-    if (!loading && hasMore) {
-      fetchNotifications(page + 1, true);
-    }
-  }, [loading, hasMore, page, fetchNotifications]);
-
-  // Mark notification as read
-  const markAsRead = useCallback(async (notificationId) => {
+  // Fetch initial notifications
+  const fetchNotifications = useCallback(async () => {
     try {
-      const data = await apiMarkAsRead(notificationId);
+      setLoading(true);
+      const response = await fetch('/api/notifications?limit=20');
+      const data = await response.json();
 
-      // Update local state
-      setNotifications((prev) =>
-        prev.map((n) => (n._id === notificationId ? { ...n, read: true } : n))
-      );
-      setUnreadCount(data.unreadCount);
+      if (data.success) {
+        setNotifications(data.data || []);
+        setUnreadCount(data.unreadCount || 0);
+      }
     } catch (error) {
-      console.error("Error marking notification as read:", error);
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoading(false);
     }
   }, []);
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  // Socket listeners
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('⚠️ Socket not connected:', { socket: !!socket, isConnected });
+      return;
+    }
+    
+    console.log('✅ Socket connected, setting up notification listeners');
+
+    // Listen for new notifications
+    const cleanupNew = socketNotifications.onNotificationNew(socket, (notification, newUnreadCount) => {
+      console.log('✅ New notification received:', notification);
+      console.log('✅ Unread count:', newUnreadCount);
+      
+      // Add to list
+      setNotifications(prev => [notification, ...prev]);
+      if (typeof newUnreadCount === 'number') {
+        setUnreadCount(newUnreadCount);
+      } else {
+        setUnreadCount(prev => prev + 1);
+      }
+
+      // Play notification sound (unless silent mode is on)
+      if (!silentMode.isEnabled()) {
+        notificationSound.play();
+      }
+
+      // Show browser notification if page is hidden
+      browserNotifications.showNotificationIfHidden({
+        title: notification.title || 'New Notification',
+        body: notification.body || '',
+        icon: notification.fromUser?.image || '/user.jpg',
+        tag: notification._id,
+        data: notification,
+        onClick: () => {
+          window.focus();
+          // Handle notification click based on type
+          if (notification.type === 'message' && notification.chatId) {
+            window.location.href = `/chats/${notification.chatId}`;
+          } else if (notification.type === 'friend_request') {
+            window.location.href = '/friends';
+          }
+        },
+      });
+    });
+
+    // Listen for notification read
+    const cleanupRead = socketNotifications.onNotificationRead(socket, (notificationId, newUnreadCount) => {
+      setNotifications(prev =>
+        prev.map(n => (n._id === notificationId ? { ...n, read: true } : n))
+      );
+      setUnreadCount(newUnreadCount);
+    });
+
+    // Listen for all read
+    const cleanupAllRead = socketNotifications.onAllNotificationsRead(socket, (newUnreadCount) => {
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(newUnreadCount);
+    });
+
+    // Listen for notification deleted
+    const cleanupDeleted = socketNotifications.onNotificationDeleted(socket, (notificationId, newUnreadCount) => {
+      setNotifications(prev => prev.filter(n => n._id !== notificationId));
+      setUnreadCount(newUnreadCount);
+    });
+
+    return () => {
+      cleanupNew();
+      cleanupRead();
+      cleanupAllRead();
+      cleanupDeleted();
+    };
+  }, [socket, isConnected]);
+
+  // Mark as read
+  const markAsRead = useCallback(async (notificationId) => {
+    console.log('📖 Marking notification as read:', notificationId);
+    
+    if (!socket || !isConnected) {
+      console.log('📖 Using HTTP fallback');
+      // Fallback to HTTP
+      try {
+        const response = await fetch(`/api/notifications/${notificationId}`, {
+          method: 'PATCH',
+        });
+        const data = await response.json();
+        if (data.success) {
+          setNotifications(prev =>
+            prev.map(n => (n._id === notificationId ? { ...n, read: true } : n))
+          );
+          setUnreadCount(data.unreadCount);
+          console.log('✅ Marked as read via HTTP');
+        }
+      } catch (error) {
+        console.error('❌ Error marking notification as read:', error);
+      }
+      return;
+    }
+
+    try {
+      console.log('📖 Using socket');
+      const result = await socketNotifications.markNotificationAsRead(socket, notificationId);
+      console.log('✅ Marked as read via socket:', result);
+    } catch (error) {
+      console.error('❌ Error marking notification as read:', error);
+    }
+  }, [socket, isConnected]);
 
   // Mark all as read
   const markAllAsRead = useCallback(async () => {
-    try {
-      await apiMarkAllAsRead();
-
-      // Update local state
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setUnreadCount(0);
-    } catch (error) {
-      console.error("Error marking all as read:", error);
+    if (!socket || !isConnected) {
+      // Fallback to HTTP
+      try {
+        const response = await fetch('/api/notifications', {
+          method: 'POST',
+        });
+        const data = await response.json();
+        if (data.success) {
+          setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+          setUnreadCount(0);
+        }
+      } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+      }
+      return;
     }
-  }, []);
+
+    try {
+      await socketNotifications.markAllNotificationsAsRead(socket);
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  }, [socket, isConnected]);
 
   // Delete notification
   const deleteNotification = useCallback(async (notificationId) => {
-    try {
-      const data = await apiDeleteNotification(notificationId);
-
-      // Update local state
-      setNotifications((prev) => prev.filter((n) => n._id !== notificationId));
-      setUnreadCount(data.unreadCount);
-    } catch (error) {
-      console.error("Error deleting notification:", error);
-    }
-  }, []);
-
-  // Refresh unread count
-  const refreshUnreadCount = useCallback(async () => {
-    try {
-      const count = await apiGetUnreadCount();
-      setUnreadCount(count);
-    } catch (error) {
-      console.error("Error refreshing unread count:", error);
-    }
-  }, []);
-
-  // Socket listener: New notification
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-
-    const handleNewNotification = (data) => {
-      const { notification, unreadCount: newCount } = data;
-
-      // Add to beginning of list
-      setNotifications((prev) => [notification, ...prev]);
-      setUnreadCount(newCount);
-
-      // Show browser notification if page is not visible
-      if ("Notification" in window && Notification.permission === "granted") {
-        // Only show if page is not visible or not focused
-        if (document.visibilityState !== "visible" || !document.hasFocus()) {
-          const browserNotification = new Notification(notification.title, {
-            body: notification.body,
-            icon: notification.fromUser?.image || "/icon-192.png",
-            tag: notification._id,
-            badge: "/icon-96.png",
-            requireInteraction: false,
-          });
-
-          // Handle click - navigate to relevant page
-          browserNotification.onclick = (event) => {
-            event.preventDefault();
-            window.focus();
-
-            // Navigate based on notification type
-            if (notification.type === "message" && notification.chatId) {
-              window.location.href = `/chats?chat=${notification.chatId}`;
-            } else if (notification.type === "friend_request") {
-              window.location.href = "/friends";
-            } else if (
-              notification.type === "group_invite" &&
-              notification.chatId
-            ) {
-              window.location.href = `/chats?chat=${notification.chatId}`;
-            }
-
-            browserNotification.close();
-          };
-
-          // Auto-close after 5 seconds
-          setTimeout(() => {
-            browserNotification.close();
-          }, 5000);
+    console.log('🗑️ Deleting notification:', notificationId);
+    
+    if (!socket || !isConnected) {
+      console.log('🗑️ Using HTTP fallback');
+      // Fallback to HTTP
+      try {
+        const response = await fetch(`/api/notifications/${notificationId}`, {
+          method: 'DELETE',
+        });
+        const data = await response.json();
+        if (data.success) {
+          setNotifications(prev => prev.filter(n => n._id !== notificationId));
+          setUnreadCount(data.unreadCount);
+          console.log('✅ Deleted via HTTP');
         }
+      } catch (error) {
+        console.error('❌ Error deleting notification:', error);
       }
-    };
-
-    socket.on("notification:new", handleNewNotification);
-
-    return () => {
-      socket.off("notification:new", handleNewNotification);
-    };
-  }, [socket, isConnected]);
-
-  // Socket listener: Notification read
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-
-    const handleNotificationRead = (data) => {
-      const { notificationId, unreadCount: newCount } = data;
-
-      setNotifications((prev) =>
-        prev.map((n) => (n._id === notificationId ? { ...n, read: true } : n))
-      );
-      setUnreadCount(newCount);
-    };
-
-    socket.on("notification:read", handleNotificationRead);
-
-    return () => {
-      socket.off("notification:read", handleNotificationRead);
-    };
-  }, [socket, isConnected]);
-
-  // Socket listener: All notifications read
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-
-    const handleAllRead = () => {
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setUnreadCount(0);
-    };
-
-    socket.on("notification:all-read", handleAllRead);
-
-    return () => {
-      socket.off("notification:all-read", handleAllRead);
-    };
-  }, [socket, isConnected]);
-
-  // Socket listener: Notification deleted
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-
-    const handleNotificationDeleted = (data) => {
-      const { notificationId, unreadCount: newCount } = data;
-
-      setNotifications((prev) => prev.filter((n) => n._id !== notificationId));
-      setUnreadCount(newCount);
-    };
-
-    socket.on("notification:deleted", handleNotificationDeleted);
-
-    return () => {
-      socket.off("notification:deleted", handleNotificationDeleted);
-    };
-  }, [socket, isConnected]);
-
-  // Initial fetch
-  useEffect(() => {
-    if (session?.user && isConnected) {
-      fetchNotifications(1, false);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isConnected]);
+
+    try {
+      console.log('🗑️ Using socket');
+      const result = await socketNotifications.deleteNotification(socket, notificationId);
+      console.log('✅ Deleted via socket:', result);
+    } catch (error) {
+      console.error('❌ Error deleting notification:', error);
+    }
+  }, [socket, isConnected]);
 
   const value = {
     notifications,
     unreadCount,
     loading,
-    hasMore,
-    fetchNotifications,
-    loadMore,
     markAsRead,
     markAllAsRead,
     deleteNotification,
-    refreshUnreadCount,
+    refetch: fetchNotifications,
   };
 
   return (
@@ -258,9 +224,7 @@ export function NotificationProvider({ children }) {
 export function useNotifications() {
   const context = useContext(NotificationContext);
   if (!context) {
-    throw new Error(
-      "useNotifications must be used within NotificationProvider"
-    );
+    throw new Error('useNotifications must be used within NotificationProvider');
   }
   return context;
 }

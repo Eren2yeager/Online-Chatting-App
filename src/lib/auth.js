@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import User from '../models/User.js';
+import User from '../models/User.mjs';
 import connectDB from './mongodb.js';
 import CredentialsProvider from 'next-auth/providers/credentials';
 

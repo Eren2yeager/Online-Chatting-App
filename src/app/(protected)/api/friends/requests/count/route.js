@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.js';
 import connectDB from '@/lib/mongodb.js';
-import FriendRequest from '@/models/FriendRequest.js';
+import FriendRequest from '@/models/FriendRequest.mjs';
 import { rateLimit } from '@/lib/rateLimit.js';
 
 /**

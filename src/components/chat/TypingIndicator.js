@@ -11,7 +11,7 @@ const TypingIndicator = memo(function TypingIndicator({ typingUsers = [] }) {
 
   // Get typing user info
   const user = typingUsers[0];
-  const avatarUrl = user?.image || "/user.png";
+  const avatarUrl = user?.image || "/user.jpg";
   const userName = user?.name || "Someone";
   const multipleUsers = typingUsers.length > 1;
 
@@ -24,7 +24,7 @@ const TypingIndicator = memo(function TypingIndicator({ typingUsers = [] }) {
           alt={userName}
           className="w-8 h-8 rounded-full object-cover ring-2 ring-white shadow-sm"
           onError={(e) => {
-            e.target.src = "/user.png";
+            e.target.src = "/user.jpg";
           }}
         />
       </div>

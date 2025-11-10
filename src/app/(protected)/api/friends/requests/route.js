@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.js';
 import dbConnect from '@/lib/mongodb.js';
-import FriendRequest from '@/models/FriendRequest.js';
-import User from '@/models/User.js';
+import FriendRequest from '@/models/FriendRequest.mjs';
+import User from '@/models/User.mjs';
 import { ok, created, badRequest, unauthorized, notFound, forbidden, serverError } from '@/lib/api-helpers';
 
 export async function GET() {

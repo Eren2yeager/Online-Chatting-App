@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.js';
 import connectDB from '@/lib/mongodb.js';
-import Chat from '@/models/Chat.js';
+import Chat from '@/models/Chat.mjs';
 import { ok, unauthorized, serverError, tooManyRequests } from '@/lib/api-helpers.js';
 import { rateLimit, applyRateLimitHeaders } from '@/lib/rateLimit.js';
 
@@ -74,7 +74,7 @@ export async function GET(request) {
         try {
           // Validate ObjectId before populating
           if (mongoose.Types.ObjectId.isValid(chat.lastMessage)) {
-            const Message = (await import('@/models/Message.js')).default;
+            const Message = (await import('@/models/Message.mjs')).default;
             const lastMsg = await Message.findById(chat.lastMessage)
               .select('sender text type media createdAt isDeleted')
               .populate('sender', 'name image handle')
@@ -207,7 +207,7 @@ export async function POST(request) {
 
     // Emit socket event to notify participants
     try {
-      const { getIO } = await import('../../../../server/socket-server.js');
+      const { getIO } = await import('../../../../../server/server.mjs');
       const io = getIO();
       
       // Notify all participants about the new chat

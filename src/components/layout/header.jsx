@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { ChatBubbleLeftRightIcon, Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useNavigation } from "./NavigationContext";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 const Header = () => {
   const { isCollapsed, setIsCollapsed } = useNavigation();
@@ -65,6 +66,11 @@ const Header = () => {
           </div>
           <h1 className="text-xl font-bold text-gray-900">ChatApp</h1>
         </div>
+      </div>
+
+      {/* Right Side - Notification Bell */}
+      <div className="flex items-center">
+        <NotificationBell />
       </div>
     </header>
   );

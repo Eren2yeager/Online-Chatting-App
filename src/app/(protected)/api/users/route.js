@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.js';
 import connectDB from '@/lib/mongodb.js';
-import User from '@/models/User.js';
+import User from '@/models/User.mjs';
 
 // GET /api/users - Get all users (for adding friends)
 export async function GET() {

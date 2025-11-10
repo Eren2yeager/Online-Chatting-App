@@ -1,8 +1,8 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.js';
 import connectDB from '@/lib/mongodb.js';
-import Chat from '@/models/Chat.js';
-import User from '@/models/User.js';
+import Chat from '@/models/Chat.mjs';
+import User from '@/models/User.mjs';
 import { validateRequest, chatUpdateSchema } from '@/lib/validators.js';
 import { rateLimit, applyRateLimitHeaders } from '@/lib/rateLimit.js';
 import { ok, badRequest, unauthorized, forbidden, notFound, serverError, tooManyRequests } from '@/lib/api-helpers.js';

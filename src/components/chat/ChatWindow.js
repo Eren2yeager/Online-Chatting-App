@@ -556,7 +556,7 @@ export default function ChatWindow({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.05),transparent_50%),radial-gradient(circle_at_70%_80%,rgba(168,85,247,0.05),transparent_50%)] pointer-events-none"></div>
       
       {/* Modern Header with Gradient */}
-      <div className="flex items-center justify-between p-3 sm:p-4 border-b border-white/60 bg-gradient-to-r from-white/80 via-blue-50/50 to-purple-50/50 backdrop-blur-xl shadow-sm relative z-10">
+      <div className="flex items-center justify-between p-3 sm:p-4 border-b border-white/60 bg-gradient-to-r from-white/80 via-blue-50/50 to-purple-50/50 backdrop-blur-xl shadow-sm relative ">
         <div className="flex items-center gap-3">
           {/* Back Button */}
           <button
@@ -746,7 +746,7 @@ export default function ChatWindow({
 
       {/* Input Area with Gradient Shadow */}
       <div
-        className="border-t border-white/60 bg-gradient-to-r from-white/90 via-blue-50/40 to-purple-50/40 backdrop-blur-xl p-3 shadow-[0_-8px_32px_-8px_rgba(59,130,246,0.15)] relative z-10"
+        className="border-t border-white/60 bg-gradient-to-r from-white/90 via-blue-50/40 to-purple-50/40 backdrop-blur-xl p-3 shadow-[0_-8px_32px_-8px_rgba(59,130,246,0.15)] relative "
         onContextMenu={() => setShowContextMenu(false)}
       >
         {chatInputRestrictionMessage ? (

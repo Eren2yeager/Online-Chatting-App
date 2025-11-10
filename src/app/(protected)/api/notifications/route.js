@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
-import Notification from "@/models/Notification";
+import Notification from "@/models/Notification.mjs";
 
 /**
  * GET /api/notifications

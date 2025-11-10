@@ -1,8 +1,8 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.js';
 import connectDB from '@/lib/mongodb.js';
-import Chat from '@/models/Chat.js';
-import Message from '@/models/Message.js';
+import Chat from '@/models/Chat.mjs';
+import Message from '@/models/Message.mjs';
 
 /**
  * GET /api/chats/[chatId]/media

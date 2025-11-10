@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from '@/lib/auth.js';
 import dbConnect from '@/lib/mongodb.js';
-import Chat from "@/models/Chat";
+import Chat from "@/models/Chat.mjs";
 
 export async function GET(req, { params }) {
   try {
