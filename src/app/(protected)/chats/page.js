@@ -4,17 +4,16 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
-  ChatBubbleLeftRightIcon,
-  PlusIcon,
   UserGroupIcon,
-  UserIcon,
 } from "@heroicons/react/24/outline";
+import CustomChatIcon from "@/components/icons/CustomChatIcon";
 import ChatSidebar from "../../../components/chat/ChatSidebar";
 import CreateGroupModal from "../../../components/chat/CreateGroupModal.jsx";
 import FriendRequestsModal from "../../../components/chat/FriendRequestsModal.jsx";
 import AddFriendModal from "../../../components/friends/AddFriendModal.jsx";
+import ResizableLayout from "../../../components/chat/ResizableLayout";
 import { useSocket } from "@/lib/socket";
-
+import { Loader } from "@/components/ui";
 /**
  * Main chats page - shows sidebar and a placeholder for selected chat on desktop, sidebar only on mobile
  */
@@ -161,7 +160,7 @@ export default function ChatsPage() {
     // Listen for new messages to update lastMessage in sidebar
     const handleMessageNew = (data) => {
       const { message, chatId } = data;
-      
+
       console.log("📨 New message received:");
       console.log("  - chatId:", chatId);
       console.log("  - message._id:", message._id);
@@ -320,7 +319,7 @@ export default function ChatsPage() {
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+        <Loader />
       </div>
     );
   }
@@ -332,8 +331,8 @@ export default function ChatsPage() {
   return (
     <>
       <div className="flex h-screen bg-gray-50">
-        {/* Sidebar */}
-        <div className="w-full md:w-80 h-full border-r border-gray-200 bg-white flex flex-col">
+        {/* Mobile Sidebar */}
+        <div className="w-full md:hidden h-full border-r border-gray-200 bg-white flex flex-col">
           <div className="flex-1 min-h-0 overflow-hidden">
             <ChatSidebar
               chats={filteredChats}
@@ -350,32 +349,35 @@ export default function ChatsPage() {
             />
           </div>
         </div>
-        {/* Desktop Chat Placeholder */}
-        <div className="hidden md:flex flex-1 items-center justify-center max-h-full">
-          <div className="max-w-full  w-full px-8 py-12  rounded-2xl  flex flex-col items-center">
-            <ChatBubbleLeftRightIcon className="h-20 w-20  mb-4 p-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full text-white" />
-            {/* <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              Select a conversation
-            </h2> */}
-            {/* <p className="text-gray-500 text-center mb-6">
-              Choose a chat from the sidebar to start messaging.
-              <br />
-            </p> */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => router.push("/friends")}
-                className="inline-flex items-center px-4 py-2 rounded-md bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition"
-              >
-                <UserIcon className="h-5 w-5 mr-2" />
-                Go to Friends
-                {friendRequestCount > 0 && (
-                  <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                    {friendRequestCount}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
+
+        {/* Desktop Resizable Layout */}
+        <div className="hidden md:flex flex-1 w-full">
+          <ResizableLayout
+            sidebar={
+              <ChatSidebar
+                chats={filteredChats}
+                selectedChat={null}
+                onChatSelect={handleChatSelect}
+                onNewMessage={handleNewMessage}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onCreateGroup={() => setShowCreateGroup(true)}
+                onShowFriendRequests={() => setShowFriendRequests(true)}
+                onShowAddFriend={() => setShowAddFriend(true)}
+                loading={loading}
+                friendRequestCount={friendRequestCount}
+              />
+            }
+            main={
+              <div className="flex-1 flex items-center justify-center">
+                <div className="max-w-full w-full px-8 py-12 rounded-2xl flex flex-col items-center">
+                  <div className="h-30 w-30 rounded-3xl flex items-center justify-center">
+                    <CustomChatIcon className="h-30 w-30" />
+                  </div>
+                </div>
+              </div>
+            }
+          />
         </div>
       </div>
 

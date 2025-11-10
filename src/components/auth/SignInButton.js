@@ -2,7 +2,7 @@
 
 import { signIn, signOut, useSession } from 'next-auth/react';
 import { motion } from 'framer-motion';
-
+import { Loader } from '../ui';
 export default function SignInButton() {
   const { data: session, status } = useSession();
 
@@ -13,7 +13,7 @@ export default function SignInButton() {
         animate={{ opacity: 1 }}
         className="flex items-center justify-center p-4"
       >
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+           <Loader />
       </motion.div>
     );
   }

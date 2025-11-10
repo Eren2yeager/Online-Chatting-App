@@ -5,11 +5,12 @@ import { signIn, useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { 
-  ChatBubbleLeftRightIcon,
   ArrowRightIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
+import CustomChatIcon from '@/components/icons/CustomChatIcon';
 import { useToast } from '@/components/layout/ToastContext';
+import { Loader } from '@/components/ui';
 /**
  * Main sign-in page component
  */
@@ -17,7 +18,7 @@ export default function SignInPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+            <Loader />
       </div>
     }>
       <SignInPageContent />
@@ -73,7 +74,7 @@ function SignInPageContent() {
   if (status === 'loading') {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+            <Loader />
       </div>
     );
   }
@@ -95,9 +96,9 @@ function SignInPageContent() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="mx-auto h-20 w-20 bg-blue-500 rounded-full flex items-center justify-center mb-6"
+            className="mx-auto rounded-2xl h-20 w-20 flex items-center justify-center mb-6"
           >
-            <ChatBubbleLeftRightIcon className="h-10 w-10 text-white" />
+            <CustomChatIcon className="h-20 w-20" />
           </motion.div>
           
           <h2 className="text-3xl font-bold text-gray-900 mb-2">

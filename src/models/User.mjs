@@ -60,7 +60,14 @@ const UserSchema = new mongoose.Schema({
   blocked: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }]
+  }],
+  // User settings
+  settings: {
+    type: Object,
+    default: {
+      silentMode: false,
+    }
+  }
 }, {
   timestamps: true,
 });

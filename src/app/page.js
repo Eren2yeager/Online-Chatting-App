@@ -282,7 +282,7 @@ export default function HomePage() {
           </motion.div>
 
           {/* Stats Section */}
-          <motion.div
+          {/* <motion.div
             variants={itemVariants}
             className="mt-16 lg:mt-20 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto"
           >
@@ -303,7 +303,7 @@ export default function HomePage() {
                 <div className="text-gray-600 text-sm">{stat.label}</div>
               </motion.div>
             ))}
-          </motion.div>
+          </motion.div> */}
         </div>
       </motion.div>
     </div>

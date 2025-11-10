@@ -7,7 +7,6 @@ import {
   MagnifyingGlassIcon,
   UserGroupIcon,
   UserIcon,
-  ChatBubbleLeftRightIcon,
   FunnelIcon,
   PlusIcon,
   EllipsisVerticalIcon,
@@ -17,6 +16,7 @@ import {
   ArrowsUpDownIcon,
   CheckIcon,
 } from "@heroicons/react/24/outline";
+import CustomChatIcon from '@/components/icons/CustomChatIcon';
 import dateFormatter from "@/functions/dateFormattor";
 import {
   Avatar,
@@ -362,7 +362,7 @@ export default function ChatSidebar({
                     {
                       value: "all",
                       label: "All",
-                      icon: ChatBubbleLeftRightIcon,
+                      icon: CustomChatIcon,
                     },
                     { value: "groups", label: "Groups", icon: UserGroupIcon },
                     { value: "direct", label: "Direct", icon: UserIcon },
@@ -432,8 +432,8 @@ export default function ChatSidebar({
 
         {filteredAndSortedChats.length === 0 ? (
           <div className="p-8 flex flex-col justify-center items-center h-full">
-            <div className="h-24 w-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-6 shadow-xl">
-              <ChatBubbleLeftRightIcon className="h-12 w-12 text-white" />
+            <div className="h-24 w-24 rounded-2xl flex items-center justify-center mb-6 shadow-xl">
+              <CustomChatIcon className="h-24 w-24" />
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
               No Conversations Yet

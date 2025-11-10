@@ -13,7 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
-
+import { Loader } from '@/components/ui';
 export default function InvitePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -81,7 +81,7 @@ export default function InvitePage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+          <Loader />
       </div>
     );
   }

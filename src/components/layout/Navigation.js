@@ -11,11 +11,11 @@ import {
   UserGroupIcon,
   QrCodeIcon,
   UserIcon,
-  ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import CustomChatIcon from '@/components/icons/CustomChatIcon';
 // import CreateGroupModal from "../chat/CreateGroupModal.jsx";
 export default function Navigation() {
   const { data: session } = useSession();
@@ -43,13 +43,14 @@ export default function Navigation() {
   if (!session) return null;
 
   const navigationItems = [
-    { name: "Chats", href: "/chats", icon: ChatBubbleLeftRightIcon },
+    { name: "Chats", href: "/chats", icon: CustomChatIcon },
     { name: "Friends", href: "/friends", icon: UserGroupIcon },
     {
       name: "Profile",
       href: `/profile/${session.user.handle}`,
-      icon: UserIcon,
+      icon: "profile",
     },
+    
   ];
 
   const isActive = (href) => pathname === href;
@@ -60,78 +61,6 @@ export default function Navigation() {
 
   return (
     <>
-      {/* <AnimatePresence>
-        {isCollapsed && isDesktop && (
-          <div className="fixed inset-0 z-40 flex lg:flex">
-            <div
-              className="fixed inset-0 bg-opacity-50 lg:bg-opacity-0"
-              onClick={() => setIsCollapsed(false)}
-            />
-            <motion.nav
-              initial={{ x: "-100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-100%" }}
-              transition={{ type: "tween", duration: 0.2 }}
-              className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-white shadow-xl z-50 flex flex-col"
-            >
-              <div className="flex flex-col h-full">
-
-                <div className="space-y-2 flex-1 px-2">
-                  {navigationItems.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <motion.button
-                        key={item.name}
-                        onClick={() => router.push(item.href)}
-                        className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-left transition-colors ${
-                          isActive(item.href)
-                            ? "bg-blue-50 text-blue-700 border border-blue-200"
-                            : "text-gray-700 hover:bg-gray-50"
-                        }`}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        <Icon
-                          className={`w-5 h-5 ${
-                            isActive(item.href)
-                              ? "text-blue-600"
-                              : "text-gray-500"
-                          }`}
-                        />
-                        <span className="font-medium">{item.name}</span>
-                      </motion.button>
-                    );
-                  })}
-                  <button
-                    onClick={() => setShowCreateGroup(true)}
-                    className="w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <PlusIcon className="w-5 h-5 text-gray-500" />
-                    <span className="font-medium">Create Group</span>
-                  </button>
-                </div>
-
-                <div className="mt-auto pt-6 space-y-2 px-2 pb-4">
-                  <button
-                    onClick={() => router.push("/settings")}
-                    className="w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <Cog6ToothIcon className="w-5 h-5 text-gray-500" />
-                    <span className="font-medium">Settings</span>
-                  </button>
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full flex items-center space-x-3 px-3 py-3 rounded-lg text-left text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <ArrowRightOnRectangleIcon className="w-5 h-5 text-gray-500" />
-                    <span className="font-medium">Sign Out</span>
-                  </button>
-                </div>
-              </div>
-            </motion.nav>
-          </div>
-        )}
-      </AnimatePresence> */}
 
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
@@ -154,8 +83,8 @@ export default function Navigation() {
                 <div className="flex items-center justify-between mb-2">
                   {/* Logo */}
                   <div className="flex items-center">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                      <ChatBubbleLeftRightIcon className="w-6 h-6 text-white" />
+                    <div className="w-10 h-10  flex items-center justify-center">
+                      <CustomChatIcon className="w-10 h-10" />
                     </div>
                     <h1 className="text-xl ml-2 font-bold text-gray-900">ChatApp</h1>
                   </div>
@@ -178,30 +107,31 @@ export default function Navigation() {
                           router.push(item.href);
                           setIsCollapsed(false);
                         }}
-                        className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                        className={`w-full flex items-center space-x-3 px-2 py-2 rounded-lg text-left transition-colors ${
                           isActive(item.href)
                             ? "bg-blue-50 text-blue-700 border border-blue-200"
                             : "text-gray-700 hover:bg-gray-50"
                         }`}
                       >
-                        <Icon
-                          className={`w-5 h-5 ${
-                            isActive(item.href)
-                              ? "text-blue-600"
-                              : "text-gray-500"
-                          }`}
-                        />
+                        {item.icon === "profile" ? (
+                          <img
+                            src={session.user.image}
+                            alt="Profile"
+                            className="w-7 h-7 rounded-full object-cover"
+                          />
+                        ) : (
+                          <Icon
+                            className={`w-7 h-7 ${
+                              isActive(item.href)
+                                ? "text-blue-600"
+                                : "text-gray-500"
+                            }`}
+                          />
+                        )}
                         <span className="font-medium">{item.name}</span>
                       </button>
                     );
                   })}
-                  {/* <button
-                    onClick={() => setShowCreateGroup(true)}
-                    className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <PlusIcon className="w-5 h-5 text-gray-500" />
-                    <span className="font-medium">Create Group</span>
-                  </button> */}
                 </div>
 
                 {/* Settings & Sign Out */}
@@ -213,14 +143,14 @@ export default function Navigation() {
                     }}
                     className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left text-gray-700 hover:bg-gray-50 transition-colors"
                   >
-                    <Cog6ToothIcon className="w-5 h-5 text-gray-500" />
+                    <Cog6ToothIcon className="w-7 h-7 text-gray-500" />
                     <span className="font-medium">Settings</span>
                   </button>
                   <button
                     onClick={handleSignOut}
                     className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left text-red-600 hover:bg-red-50 transition-colors"
                   >
-                    <ArrowRightOnRectangleIcon className="w-5 h-5 text-red-600" />
+                    <ArrowRightOnRectangleIcon className="w-7 h-7 text-red-600" />
                     <span className="font-medium">Sign Out</span>
                   </button>
                 </div>
@@ -229,15 +159,7 @@ export default function Navigation() {
           </div>
         )}
       </AnimatePresence>
-      {/* <CreateGroupModal
-        isOpen={showCreateGroup}
-        onClose={() => setShowCreateGroup(false)}
-        onGroupCreated={() => {
-          setShowCreateGroup(false);
-          // Refresh the chat list
-          router.refresh();
-        }}
-      /> */}
+
     </>
   );
 }

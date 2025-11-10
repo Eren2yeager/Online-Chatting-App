@@ -7,17 +7,18 @@ import {
   UserPlusIcon, 
   UserMinusIcon,
   MagnifyingGlassIcon,
-  ChatBubbleLeftRightIcon,
   XMarkIcon,
   CheckIcon,
   BellIcon,
   UserIcon
 } from '@heroicons/react/24/outline';
+import CustomChatIcon from '@/components/icons/CustomChatIcon';
 import { useToast } from '@/components/layout/ToastContext';
 import { useSocketEmitter, useSocket, usePresence } from '@/lib/socket';
 import { UserAvatar, Button, Input } from '@/components/ui';
 import AddFriendModal from '@/components/friends/AddFriendModal';
 import FriendRequestsModal from '@/components/chat/FriendRequestsModal';
+import { Loader } from '@/components/ui';
 
 export default function FriendsPage() {
   const { data: session, status } = useSession();
@@ -172,7 +173,7 @@ export default function FriendsPage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+           <Loader />
       </div>
     );
   }
@@ -285,7 +286,7 @@ export default function FriendsPage() {
                           variant="secondary"
                           className="flex-1 md:flex-none"
                         >
-                          <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" />
+                          <CustomChatIcon className="w-5 h-5 mr-2" />
                           Chat
                         </Button>
                         

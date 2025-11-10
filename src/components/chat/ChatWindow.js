@@ -158,12 +158,12 @@ export default function ChatWindow({
     // Mark all unread messages as read when messages are loaded/updated
     if (messages.length > 0 && socket && session?.user?.id) {
       const unreadMessages = messages.filter(msg => {
-        const isOwnMessage = msg.sender._id === session.user.id;
+        const isOwnMessage = msg.sender?._id === session.user.id;
         const isAlreadyRead = msg.readBy && msg.readBy.includes(session.user.id);
         
         console.log('📖 Message check:', {
           id: msg._id,
-          sender: msg.sender._id,
+          sender: msg.sender?._id,
           currentUser: session.user.id,
           isOwnMessage,
           readBy: msg.readBy,
@@ -544,7 +544,7 @@ export default function ChatWindow({
     if (isBlocked) {
       chatInputRestrictionMessage =
         "You cannot send messages because you have blocked this user or they have blocked you.";
-    } else if (!isFriend) {
+    } else if (!isFriend && !loading) {
       chatInputRestrictionMessage =
         "You can only chat with users who are your friends. Add this user as a friend to start chatting.";
     }
@@ -675,7 +675,7 @@ export default function ChatWindow({
                 <ChatMessage
                   key={message._id}
                   message={message}
-                  isOwn={message.sender._id === session?.user?.id}
+                  isOwn={message.sender?._id === session?.user?.id}
                   onReply={(msg) => setReplyToMessage(msg)}
                   onEdit={(msg) => {
                     setEditMessage(msg);
@@ -701,7 +701,7 @@ export default function ChatWindow({
                     emit("reaction:add", { messageId: message._id, emoji });
                   }}
                   showAvatar={
-                    !chat.isGroup || message.sender._id !== session?.user?.id
+                    !chat.isGroup || message.sender?._id !== session?.user?.id
                   }
                 />
               ))}
@@ -774,7 +774,7 @@ export default function ChatWindow({
         position={contextMenuPosition}
         onClose={() => setShowContextMenu(false)}
         message={contextMenuMessage}
-        isOwn={contextMenuMessage?.sender._id === session?.user?.id}
+        isOwn={contextMenuMessage?.sender?._id === session?.user?.id}
         onReply={(msg) => setReplyToMessage(msg)}
         onEdit={(msg) => setEditMessage(msg)}
         onDelete={handleDeleteMessage}

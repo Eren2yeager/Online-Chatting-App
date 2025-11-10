@@ -675,9 +675,9 @@ export default function ChatMessage({
                   router.push(`/profile/${message.sender.handle}`);
                 }
               }}
-              className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full text-left"
+              className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-gray-500 hover:text-gray-600 mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full text-left"
             >
-              {message.sender?.name || "Unknown"}
+              {message.sender?.name || "Deleted User"}
             </button>
           )}
 
@@ -774,9 +774,9 @@ export default function ChatMessage({
                 router.push(`/profile/${message.sender.handle}`);
               }
             }}
-            className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full text-left"
+            className="text-[9px] min-[400px]:text-[10px] sm:text-xs font-semibold text-gray-500 hover:text-gray-600 mb-0.5 sm:mb-1 px-0.5 sm:px-1 truncate max-w-full text-left"
           >
-            {message.sender?.name || "Unknown"}
+            {message.sender?.name || "Deleted User"}
           </button>
         )}
 

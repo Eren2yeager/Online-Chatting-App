@@ -12,7 +12,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { useToast } from "@/components/layout/ToastContext";
-
+import { Loader } from '@/components/ui';
 export default function InviteHandlePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -136,7 +136,7 @@ export default function InviteHandlePage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+           <Loader />
       </div>
     );
   }

@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { ChatBubbleLeftRightIcon, Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import CustomChatIcon from '@/components/icons/CustomChatIcon';
 import { useNavigation } from "./NavigationContext";
 import NotificationBell from "@/components/notifications/NotificationBell";
 
@@ -61,8 +62,8 @@ const Header = () => {
         </button>
         
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <ChatBubbleLeftRightIcon className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 rounded-2xl  flex items-center justify-center">
+            <CustomChatIcon className="w-10 h-10" />
           </div>
           <h1 className="text-xl font-bold text-gray-900">ChatApp</h1>
         </div>

@@ -15,14 +15,14 @@ import {
   UserPlusIcon,
   PencilIcon,
   PhotoIcon,
-  ChatBubbleLeftRightIcon,
   ExclamationTriangleIcon,
   CalendarIcon,
   EnvelopeIcon,
   ShieldCheckIcon,
   UserMinusIcon,
 } from "@heroicons/react/24/outline";
-
+import CustomChatIcon from '@/components/icons/CustomChatIcon';
+import { Loader } from '@/components/ui';
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/components/layout/ToastContext";
 import { useSocketEmitter } from "@/lib/socket";
@@ -547,7 +547,7 @@ export default function ProfileByHandlePage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+             <Loader />
       </div>
     );
   }
@@ -832,7 +832,7 @@ export default function ProfileByHandlePage() {
                         </>
                       ) : (
                         <>
-                          <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" />
+                          <CustomChatIcon className="w-5 h-5 mr-2" />
                           Go to Chat
                         </>
                       )}

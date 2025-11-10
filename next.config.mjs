@@ -33,6 +33,14 @@ const nextConfig = {
             // FIXED: Allow camera for self, block microphone and geolocation
             value: 'camera=(self), microphone=(), geolocation=()',
           },
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains',
+          },
         ],
       },
       {

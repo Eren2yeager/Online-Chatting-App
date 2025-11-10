@@ -11,7 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { Spinner, Button } from '@/components/ui';
 import { motion } from 'framer-motion';
-
+import { Loader } from '@/components/ui';
 /**
  * Full Notifications Page
  * Shows all notifications with filtering and actions

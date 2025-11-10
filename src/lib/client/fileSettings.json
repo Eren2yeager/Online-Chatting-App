@@ -48,7 +48,8 @@
       "application/xml",
       "text/xml",
       "application/rtf",
-      "text/rtf"
+      "text/rtf",
+      "text/markdown"
     ],
     "archives": [
       "application/zip",

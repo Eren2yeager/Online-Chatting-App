@@ -28,8 +28,8 @@ export default function NotificationDropdown({ onClose }) {
     await markAllAsRead();
   };
 
-  const toggleSilentMode = () => {
-    const newState = silentMode.toggle();
+  const toggleSilentMode = async () => {
+    const newState = await silentMode.toggle(true); // true = sync to server
     setIsSilent(newState);
   };
 

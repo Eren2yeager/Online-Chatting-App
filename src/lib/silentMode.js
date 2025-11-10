@@ -6,9 +6,22 @@
 class SilentModeService {
   constructor() {
     this.enabled = false;
+    this.initialized = false;
     
-    // Load preference from localStorage
+    // Load preference from localStorage first (for immediate UI)
     this.loadPreference();
+    
+    // Then load from server (will override localStorage if different)
+    this.initialize();
+  }
+
+  /**
+   * Initialize by loading from server
+   */
+  async initialize() {
+    if (this.initialized) return;
+    this.initialized = true;
+    await this.loadFromServer();
   }
 
   /**
@@ -45,31 +58,94 @@ class SilentModeService {
 
   /**
    * Enable silent mode
+   * @param {boolean} syncToServer - Whether to sync to server
    */
-  enable() {
+  async enable(syncToServer = true) {
     this.enabled = true;
     this.savePreference();
     this.notifyListeners();
+    
+    if (syncToServer) {
+      await this.syncToServer();
+    }
   }
 
   /**
    * Disable silent mode
+   * @param {boolean} syncToServer - Whether to sync to server
    */
-  disable() {
+  async disable(syncToServer = true) {
     this.enabled = false;
     this.savePreference();
     this.notifyListeners();
+    
+    if (syncToServer) {
+      await this.syncToServer();
+    }
   }
 
   /**
    * Toggle silent mode
+   * @param {boolean} syncToServer - Whether to sync to server
    * @returns {boolean} New enabled state
    */
-  toggle() {
+  async toggle(syncToServer = true) {
     this.enabled = !this.enabled;
     this.savePreference();
     this.notifyListeners();
+    
+    if (syncToServer) {
+      await this.syncToServer();
+    }
+    
     return this.enabled;
+  }
+
+  /**
+   * Sync silent mode to server settings
+   */
+  async syncToServer() {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      // Fetch current settings
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      
+      if (data.success) {
+        // Update with new silent mode value
+        await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...data.data,
+            silentMode: this.enabled,
+          }),
+        });
+      }
+    } catch (error) {
+      console.error('Error syncing silent mode to server:', error);
+    }
+  }
+
+  /**
+   * Load silent mode from server settings
+   */
+  async loadFromServer() {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        this.enabled = data.data.silentMode || false;
+        this.savePreference();
+        this.notifyListeners();
+      }
+    } catch (error) {
+      console.error('Error loading silent mode from server:', error);
+    }
   }
 
   /**

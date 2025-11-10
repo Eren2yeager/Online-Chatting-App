@@ -10,8 +10,10 @@ import ServiceWorkerInit from "@/components/notifications/ServiceWorkerInit";
 import NotificationTester from "@/components/notifications/NotificationTester";
 
 export const metadata = {
-  title: "ChatApp",
-  description: "A modern chat application built with Next.js",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 export default function RootLayout({ children }) {
