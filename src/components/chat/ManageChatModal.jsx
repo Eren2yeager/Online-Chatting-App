@@ -41,6 +41,8 @@ export default function ManageChatModal({
   const [memberSearch, setMemberSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState(""); // "uploading", "checking", "success", "error"
   const [inviteLink, setInviteLink] = useState("");
   const [mediaFiles, setMediaFiles] = useState([]);
   const [links, setLinks] = useState([]);
@@ -151,9 +153,22 @@ export default function ManageChatModal({
     const formData = new FormData();
     formData.append("file", file);
     formData.append("type", "image");
+    
     const res = await fetch("/api/upload", { method: "POST", body: formData });
-    if (!res.ok) throw new Error("Upload failed");
     const data = await res.json();
+    
+    // Check for NSFW content error
+    if (!res.ok || !data.success) {
+      const errorMessage = data.message || data.error || "Upload failed";
+      
+      // Show specific error for NSFW content
+      if (errorMessage.includes("inappropriate") || errorMessage.includes("not allowed")) {
+        throw new Error("⚠️ This image contains inappropriate content and cannot be uploaded.");
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
     return data.url;
   };
 
@@ -166,15 +181,39 @@ export default function ManageChatModal({
     try {
       setLoading(true);
       setError("");
+      setUploadProgress(0);
+      setUploadStatus("");
       
       // Upload image if changed
       let imageUrl = editForm.image;
       if (imageFile) {
         try {
+          setUploadStatus("checking");
+          setUploadProgress(10);
+          showToast({ text: "🔍 Checking image content..." });
+          
+          // Simulate progress during upload
+          const progressInterval = setInterval(() => {
+            setUploadProgress(prev => {
+              if (prev < 80) return prev + 10;
+              return prev;
+            });
+          }, 200);
+          
           imageUrl = await uploadImage(imageFile);
+          
+          clearInterval(progressInterval);
+          setUploadProgress(100);
+          setUploadStatus("success");
+          showToast({ text: "✅ Image uploaded successfully" });
+          
         } catch (uploadError) {
           console.error("Image upload failed:", uploadError);
-          showToast({ text: "Failed to upload image" });
+          setUploadStatus("error");
+          setUploadProgress(0);
+          
+          // Show the specific error message (including NSFW errors)
+          showToast({ text: uploadError.message || "Failed to upload image" });
           setLoading(false);
           return;
         }
@@ -192,6 +231,8 @@ export default function ManageChatModal({
       if (res?.success) {
         showToast({ text: "Group settings updated successfully" });
         setImageFile(null); // Clear the file after successful upload
+        setUploadProgress(0);
+        setUploadStatus("");
         onUpdated?.(res.chat);
       } else {
         const errorMsg = res?.error || "Failed to save settings";
@@ -396,6 +437,8 @@ export default function ManageChatModal({
                     handleLeaveGroup={handleLeaveGroup}
                     isGroup={isGroup}
                     otherUser={otherUser}
+                    uploadProgress={uploadProgress}
+                    uploadStatus={uploadStatus}
                   />
                 </motion.div>
               )}

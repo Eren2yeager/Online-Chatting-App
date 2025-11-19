@@ -30,6 +30,8 @@ export default function OverviewTab({
   handleLeaveGroup,
   isGroup = true,
   otherUser,
+  uploadProgress = 0,
+  uploadStatus = "",
 }) {
   const router = useRouter();
   const showToast = useToast();
@@ -138,16 +140,34 @@ export default function OverviewTab({
               className="relative"
             >
               {editForm.image ? (
-                <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-gradient-to-r from-blue-500 to-purple-600 shadow-xl">
+                <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-gradient-to-r from-blue-500 to-purple-600 shadow-xl relative">
                   <img
                     src={editForm.image}
                     alt="Group"
                     className="w-full h-full object-cover"
                   />
+                  {/* Upload Progress Overlay */}
+                  {loading && uploadProgress > 0 && uploadProgress < 100 && (
+                    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 rounded-full border-4 border-white/30 border-t-white animate-spin mb-2" />
+                      <div className="text-white text-sm font-semibold">
+                        {uploadProgress}%
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="w-40 h-40 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center border-4 border-white shadow-xl">
+                <div className="w-40 h-40 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center border-4 border-white shadow-xl relative">
                   <PhotoIcon className="w-16 h-16 text-gray-400" />
+                  {/* Upload Progress Overlay */}
+                  {loading && uploadProgress > 0 && uploadProgress < 100 && (
+                    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center rounded-full">
+                      <div className="w-16 h-16 rounded-full border-4 border-white/30 border-t-white animate-spin mb-2" />
+                      <div className="text-white text-sm font-semibold">
+                        {uploadProgress}%
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
@@ -160,16 +180,49 @@ export default function OverviewTab({
                   onChange={handleImageChange}
                   className="hidden"
                   id="dialog-image-upload"
+                  disabled={loading}
                 />
                 <label
                   htmlFor="dialog-image-upload"
-                  className="absolute bottom-2 right-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full p-3 shadow-lg cursor-pointer hover:shadow-xl transition-all"
+                  className={`absolute bottom-2 right-2 rounded-full p-3 shadow-lg transition-all ${
+                    loading
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-blue-600 to-purple-600 text-white cursor-pointer hover:shadow-xl"
+                  }`}
                 >
                   <PhotoIcon className="w-5 h-5" />
                 </label>
               </>
             )}
           </div>
+          
+          {/* Upload Status Messages */}
+          {uploadStatus && (
+            <div className="mt-2 text-center">
+              {uploadStatus === "checking" && (
+                <div className="text-sm text-blue-600 flex items-center justify-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
+                  Checking image content...
+                </div>
+              )}
+              {uploadStatus === "success" && (
+                <div className="text-sm text-green-600 flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Image uploaded
+                </div>
+              )}
+              {uploadStatus === "error" && (
+                <div className="text-sm text-red-600 flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  Upload failed
+                </div>
+              )}
+            </div>
+          )}
           
           <h4 className="text-xl font-semibold text-gray-800 mt-4">
             {editForm.name}

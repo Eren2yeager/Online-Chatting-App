@@ -275,7 +275,18 @@ export default function ChatInput({
         formData.append("file", file);
         formData.append("type", type);
 
-        setUploadProgress((prev) => ({ ...prev, [file.id]: 0 }));
+        setUploadProgress((prev) => ({ ...prev, [file.id]: 10 }));
+
+        // Simulate progress during upload
+        const progressInterval = setInterval(() => {
+          setUploadProgress((prev) => {
+            const currentProgress = prev[file.id] || 10;
+            if (currentProgress < 80) {
+              return { ...prev, [file.id]: currentProgress + 10 };
+            }
+            return prev;
+          });
+        }, 200);
 
         const response = await fetch("/api/upload", {
           method: "POST",
@@ -283,6 +294,9 @@ export default function ChatInput({
         });
 
         const result = await response.json();
+        
+        // Clear progress interval
+        clearInterval(progressInterval);
 
         if (response.ok && result.success && result.url) {
           uploadedMedia.push({
@@ -298,11 +312,25 @@ export default function ChatInput({
           setUploadProgress((prev) => ({ ...prev, [file.id]: 100 }));
         } else {
           console.error("Upload failed:", result);
-          throw new Error(result.message || result.error || "Upload failed");
+          const errorMessage = result.message || result.error || "Upload failed";
+          
+          // Show specific error for NSFW content
+          if (errorMessage.includes("inappropriate") || errorMessage.includes("not allowed")) {
+            throw new Error(`⚠️ ${file.name}: Contains inappropriate content and cannot be uploaded.`);
+          }
+          
+          throw new Error(errorMessage);
         }
       } catch (error) {
         console.error("Upload error:", error);
-        showToast({ text: `Failed to upload ${file.name}` });
+        // Clear progress for this file
+        setUploadProgress((prev) => {
+          const newProgress = { ...prev };
+          delete newProgress[file.id];
+          return newProgress;
+        });
+        // Show the specific error message (including NSFW errors)
+        showToast({ text: error.message || `Failed to upload ${file.name}` });
         // Remove failed file from selection
         setSelectedFiles((prev) => prev.filter((f) => f.id !== file.id));
       }
@@ -589,7 +617,7 @@ export default function ChatInput({
                         </div>
 
                         {/* Upload progress overlay */}
-                        {uploading && progress < 100 && (
+                        {uploading && progress > 0 && progress < 100 && (
                           <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
                             <div className="w-12 h-12 rounded-full border-4 border-white/30 border-t-white animate-spin mb-2" />
                             <div className="text-white text-sm font-semibold">

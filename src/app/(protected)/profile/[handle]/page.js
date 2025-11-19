@@ -61,6 +61,8 @@ export default function ProfileByHandlePage() {
   const [showQR, setShowQR] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState(""); // "uploading", "checking", "success", "error"
   const [editForm, setEditForm] = useState({
     name: "",
     bio: "",
@@ -427,9 +429,22 @@ export default function ProfileByHandlePage() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("type", "image");
+    
     const res = await fetch("/api/upload", { method: "POST", body: formData });
-    if (!res.ok) throw new Error("Upload failed");
     const data = await res.json();
+    
+    // Check for NSFW content error
+    if (!res.ok || !data.success) {
+      const errorMessage = data.message || data.error || "Upload failed";
+      
+      // Show specific error for NSFW content
+      if (errorMessage.includes("inappropriate") || errorMessage.includes("not allowed")) {
+        throw new Error("⚠️ This image contains inappropriate content and cannot be uploaded.");
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
     return data.url;
   };
 
@@ -438,15 +453,39 @@ export default function ProfileByHandlePage() {
     
     try {
       setUploading(true);
+      setUploadProgress(0);
+      setUploadStatus("");
       
       // Upload image if changed
       let imageUrl = editForm.image;
       if (imageFile) {
         try {
+          setUploadStatus("checking");
+          setUploadProgress(10);
+          toast({ text: "🔍 Checking image content..." });
+          
+          // Simulate progress during upload
+          const progressInterval = setInterval(() => {
+            setUploadProgress(prev => {
+              if (prev < 80) return prev + 10;
+              return prev;
+            });
+          }, 200);
+          
           imageUrl = await uploadImage(imageFile);
+          
+          clearInterval(progressInterval);
+          setUploadProgress(100);
+          setUploadStatus("success");
+          toast({ text: "✅ Image uploaded successfully" });
+          
         } catch (uploadError) {
           console.error("Image upload failed:", uploadError);
-          toast({ text: "Failed to upload image" });
+          setUploadStatus("error");
+          setUploadProgress(0);
+          
+          // Show the specific error message
+          toast({ text: uploadError.message || "Failed to upload image" });
           setUploading(false);
           return;
         }
@@ -469,6 +508,8 @@ export default function ProfileByHandlePage() {
         });
         setIsEditing(false);
         setImageFile(null);
+        setUploadProgress(0);
+        setUploadStatus("");
         toast({ text: "Profile updated successfully" });
         
         // Refresh user data
@@ -982,7 +1023,7 @@ export default function ProfileByHandlePage() {
 
             {/* Image Upload */}
             <div className="flex flex-col items-center mb-6">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold overflow-hidden mb-4">
+              <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold overflow-hidden mb-4">
                 {editForm.image ? (
                   <img
                     src={editForm.image}
@@ -992,19 +1033,55 @@ export default function ProfileByHandlePage() {
                 ) : (
                   <PhotoIcon className="w-10 h-10" />
                 )}
+                
+                {/* Upload Progress Overlay */}
+                {uploading && uploadProgress > 0 && uploadProgress < 100 && (
+                  <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center">
+                    <div className="w-16 h-16 rounded-full border-4 border-white/30 border-t-white animate-spin mb-2" />
+                    <div className="text-white text-xs font-semibold">
+                      {uploadProgress}%
+                    </div>
+                  </div>
+                )}
               </div>
+              
+              {/* Upload Status Messages */}
+              {uploadStatus === "checking" && (
+                <div className="text-sm text-blue-600 mb-2 flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
+                  Checking image content...
+                </div>
+              )}
+              {uploadStatus === "error" && (
+                <div className="text-sm text-red-600 mb-2 flex items-center gap-2">
+                  <ExclamationTriangleIcon className="h-4 w-4" />
+                  Upload failed
+                </div>
+              )}
+              {uploadStatus === "success" && (
+                <div className="text-sm text-green-600 mb-2 flex items-center gap-2">
+                  <CheckCircleIcon className="h-4 w-4" />
+                  Image uploaded
+                </div>
+              )}
+              
               <input
                 type="file"
                 accept="image/*"
                 onChange={handleImageChange}
                 className="hidden"
                 id="profile-image-upload"
+                disabled={uploading}
               />
               <label
                 htmlFor="profile-image-upload"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-700 transition-colors"
+                className={`px-4 py-2 rounded-lg cursor-pointer transition-colors ${
+                  uploading
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700 text-white"
+                }`}
               >
-                Change Photo
+                {uploading ? "Uploading..." : "Change Photo"}
               </label>
             </div>
 

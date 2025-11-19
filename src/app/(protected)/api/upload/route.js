@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.js';
 import cloudinary from '@/lib/cloudinary.js';
 import { rateLimit } from '@/lib/rateLimit.js';
+import { checkImageSafety } from '@/lib/nsfwDetection.js';
 
 export async function POST(request) {
   try {
@@ -83,6 +84,27 @@ export async function POST(request) {
     }
     
     console.log('Detected type:', type);
+
+    // NSFW Content Check for images BEFORE uploading
+    if (type === 'image') {
+      console.log('Running NSFW detection on image...');
+      const safetyCheck = await checkImageSafety(buffer, 0.5); // 0.5 threshold
+      
+      if (!safetyCheck.isSafe) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Content not allowed',
+            message: 'This image contains inappropriate content and cannot be uploaded.',
+            nsfwScore: safetyCheck.nsfwScore,
+            details: safetyCheck.predictions
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log('Image passed NSFW check, proceeding with upload');
+    }
 
     // Upload to Cloudinary
     let result;

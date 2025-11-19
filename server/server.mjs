@@ -99,7 +99,7 @@ app.prepare().then(() => {
     // Handle presence requests
     socket.on("presence:get-online", () => {
       const onlineUserIds = Array.from(userSockets.keys());
-      console.log(`Sending online users to ${socket.userId}:`, onlineUserIds);
+      // console.log(`Sending online users to ${socket.userId}:`, onlineUserIds);
       socket.emit("presence:online-users", { userIds: onlineUserIds });
     });
 
