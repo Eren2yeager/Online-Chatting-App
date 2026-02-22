@@ -51,6 +51,7 @@
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShareStream, setScreenShareStream] = useState(null);
 
   // Participant metadata: Map<userId, { name, image, handle, isMuted, isVideoOff }>
   const [participantsInfo, setParticipantsInfo] = useState(new Map());
@@ -301,12 +302,18 @@
        setRemoteStreams(new Map());
        iceCandidateQueues.current.clear();
  
-       // Reset flags
-       setIsMuted(false);
-       setIsVideoOff(false);
-       setIsScreenSharing(false);
-       setParticipantsInfo(new Map());
-       setOfflineTargets([]);
+      // Stop screen share stream if active
+      if (screenShareStream) {
+        screenShareStream.getTracks().forEach(track => track.stop());
+        setScreenShareStream(null);
+      }
+
+      // Reset flags
+      setIsMuted(false);
+      setIsVideoOff(false);
+      setIsScreenSharing(false);
+      setParticipantsInfo(new Map());
+      setOfflineTargets([]);
 
        // Reset call state
        setCallState('idle');
@@ -438,34 +445,42 @@
      }
    }, [localStream]);
  
-   const toggleScreenShare = useCallback(async () => {
-     try {
-       if (!isScreenSharing) {
-         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-         const screenTrack = screenStream.getVideoTracks()[0];
-         peerConnectionsRef.current.forEach((pc) => {
-           const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-           if (sender) sender.replaceTrack(screenTrack);
-         });
-         screenTrack.onended = () => toggleScreenShare();
-         setIsScreenSharing(true);
-         socket?.emit('call:screen-share', { roomId, isSharing: true });
-       } else {
-         const ls = localStreamRef.current || localStream;
-         const videoTrack = ls?.getVideoTracks()[0];
-         if (videoTrack) {
-           peerConnectionsRef.current.forEach((pc) => {
-             const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-             if (sender) sender.replaceTrack(videoTrack);
-           });
-         }
-         setIsScreenSharing(false);
-         socket?.emit('call:screen-share', { roomId, isSharing: false });
-       }
-     } catch (error) {
-       console.error('[CallContext] Error toggling screen share:', error);
-     }
-   }, [isScreenSharing, roomId, socket, localStream]);
+  const toggleScreenShare = useCallback(async () => {
+    try {
+      if (!isScreenSharing) {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = screenStream.getVideoTracks()[0];
+        setScreenShareStream(screenStream);
+        peerConnectionsRef.current.forEach((pc) => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(screenTrack);
+        });
+        screenTrack.onended = () => {
+          toggleScreenShare();
+        };
+        setIsScreenSharing(true);
+        socket?.emit('call:screen-share', { roomId, isSharing: true });
+      } else {
+        // Stop screen share stream
+        if (screenShareStream) {
+          screenShareStream.getTracks().forEach(track => track.stop());
+          setScreenShareStream(null);
+        }
+        const ls = localStreamRef.current || localStream;
+        const videoTrack = ls?.getVideoTracks()[0];
+        if (videoTrack) {
+          peerConnectionsRef.current.forEach((pc) => {
+            const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) sender.replaceTrack(videoTrack);
+          });
+        }
+        setIsScreenSharing(false);
+        socket?.emit('call:screen-share', { roomId, isSharing: false });
+      }
+    } catch (error) {
+      console.error('[CallContext] Error toggling screen share:', error);
+    }
+  }, [isScreenSharing, roomId, socket, localStream, screenShareStream]);
  
    // ------------------------------
    // Socket listeners (signaling)
@@ -696,13 +711,14 @@
      roomId,
      localStream,
      remoteStreams,
-     isMuted,
-     isVideoOff,
-     isScreenSharing,
-     participantsInfo,
-     offlineTargets,
-     // refs (for components needing direct access)
-     localVideoRef,
+    isMuted,
+    isVideoOff,
+    isScreenSharing,
+    screenShareStream,
+    participantsInfo,
+    offlineTargets,
+    // refs (for components needing direct access)
+    localVideoRef,
      // actions
      initiateCall,
      acceptCall,
@@ -721,12 +737,13 @@
      roomId,
      localStream,
      remoteStreams,
-     isMuted,
-     isVideoOff,
-     isScreenSharing,
-     participantsInfo,
-     offlineTargets,
-     initiateCall,
+    isMuted,
+    isVideoOff,
+    isScreenSharing,
+    screenShareStream,
+    participantsInfo,
+    offlineTargets,
+    initiateCall,
      acceptCall,
      rejectCall,
      cancelCall,

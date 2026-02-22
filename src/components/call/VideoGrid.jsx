@@ -3,121 +3,53 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { Avatar } from '@/components/ui';
-import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
-
-const THUMB_SIZE = 120;
+import { Mic, MicOff, Video, VideoOff, ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
+import { ComputerDesktopIcon } from '@heroicons/react/24/outline';
+import ParticipantBelt from './ParticipantBelt';
 
 /**
- * Direct call: receiver full, caller small on side. Click to swap.
- * Group call: one main full, others as movable corner-snapping thumbnails.
+ * Advanced video grid with focus mode and participant belt
+ * - Direct call: Remote full, local small corner (clickable to swap)
+ * - Group call: Focused participant large, others in scrollable belt
  */
 export default function VideoGrid({
   localStream,
   remoteStreams,
   isMuted,
   isVideoOff,
+  isScreenSharing,
+  screenShareStream,
   localVideoRef: externalLocalVideoRef,
   participantsInfo = new Map(),
   currentCall,
+  sessionUserId,
+  showParticipantsBelt = true,
+  onToggleBelt,
 }) {
   const { data: session } = useSession();
   const internalLocalVideoRef = useRef(null);
   const localVideoRef = externalLocalVideoRef || internalLocalVideoRef;
   const remoteVideosRef = useRef(new Map());
-  const containerRef = useRef(null);
 
-  const selfId = session?.user?.id ? String(session.user.id) : null;
+  const selfId = sessionUserId || session?.user?.id ? String(sessionUserId || session.user.id) : null;
   const selfInfo = selfId
-    ? { name: session.user.name || 'You', image: session.user.image }
+    ? {
+        name: session?.user?.name || 'You',
+        image: session?.user?.image,
+      }
     : { name: 'You', image: null };
 
   const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
   const isDirectCall = remoteEntries.length === 1;
 
-  const [focusedId, setFocusedId] = useState(null); // 'local' | userId | null
-  const [thumbPositions, setThumbPositions] = useState({}); // { id: cornerIndex }
-  const [draggingThumb, setDraggingThumb] = useState(null);
-  const lastDragRef = useRef({ x: 0, y: 0 });
-
-  const isInitiator = currentCall?.initiator && selfId && String(currentCall.initiator?._id || currentCall.initiator) === selfId;
-  const defaultMainId = isDirectCall
-    ? isInitiator
-      ? (remoteEntries[0]?.[0] ?? null)
-      : 'local'
-    : null;
-  const mainId = focusedId !== null ? focusedId : defaultMainId;
-  const isLocalMain = mainId === 'local';
-
-  const getParticipantInfo = useCallback(
-    (userId) => {
-      const info = participantsInfo.get(String(userId));
-      return info || { name: 'User', image: null, isMuted: false, isVideoOff: true };
-    },
-    [participantsInfo]
-  );
-
-  const getCornerStyle = useCallback((cornerIdx) => {
-    const gap = 8;
-    const idx = cornerIdx % 4;
-    const map = [
-      { top: gap, left: gap },
-      { top: gap, right: gap },
-      { bottom: gap, left: gap },
-      { bottom: gap, right: gap },
-    ];
-    return map[idx] ?? map[0];
-  }, []);
-
-  const handleThumbDragStart = useCallback((e, id) => {
-    setDraggingThumb(id);
-    lastDragRef.current = { x: e.clientX ?? e.touches?.[0]?.clientX, y: e.clientY ?? e.touches?.[0]?.clientY };
-  }, []);
-
-  useEffect(() => {
-    if (!draggingThumb || !containerRef.current) return;
-    const container = containerRef.current;
-    const gap = 16;
-    const onMove = (e) => {
-      const x = e.clientX ?? e.touches?.[0]?.clientX;
-      const y = e.clientY ?? e.touches?.[0]?.clientY;
-      const rect = container.getBoundingClientRect();
-      const cx = x - rect.left;
-      const cy = y - rect.top;
-      const cw = rect.width;
-      const ch = rect.height;
-      const corners = [
-        { i: 0, x: THUMB_SIZE / 2 + gap, y: THUMB_SIZE * 0.4 + gap },
-        { i: 1, x: cw - THUMB_SIZE / 2 - gap, y: THUMB_SIZE * 0.4 + gap },
-        { i: 2, x: THUMB_SIZE / 2 + gap, y: ch - THUMB_SIZE * 0.4 - gap },
-        { i: 3, x: cw - THUMB_SIZE / 2 - gap, y: ch - THUMB_SIZE * 0.4 - gap },
-      ];
-      let nearest = corners[0];
-      let minD = Infinity;
-      for (const c of corners) {
-        const d = (cx - c.x) ** 2 + (cy - c.y) ** 2;
-        if (d < minD) {
-          minD = d;
-          nearest = c;
-        }
-      }
-      setThumbPositions((prev) => ({ ...prev, [draggingThumb]: nearest.i }));
-    };
-    const onEnd = () => setDraggingThumb(null);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onEnd);
-    window.addEventListener('touchmove', onMove, { passive: true });
-    window.addEventListener('touchend', onEnd);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onEnd);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onEnd);
-    };
-  }, [draggingThumb]);
+  // Focus state: 'local' | userId | null (null = default: remote for direct, first for group)
+  const [focusedId, setFocusedId] = useState(null);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
-      if (localVideoRef.current.srcObject !== localStream) localVideoRef.current.srcObject = localStream;
+      if (localVideoRef.current.srcObject !== localStream) {
+        localVideoRef.current.srcObject = localStream;
+      }
       localVideoRef.current.play().catch(() => {});
     }
   }, [localStream, isVideoOff, localVideoRef]);
@@ -132,126 +64,237 @@ export default function VideoGrid({
     });
   }, [remoteStreams]);
 
-  const renderTile = (id, isLocal, stream, info, isMain, attachRef = false) => {
-    const hasVideo = isLocal
-      ? stream && !isVideoOff && stream.getVideoTracks?.()?.length > 0
-      : stream?.getVideoTracks?.()?.some((t) => t.enabled);
-    const isMutedRemote = info?.isMuted ?? false;
+  const getParticipantInfo = useCallback(
+    (userId) => {
+      const info = participantsInfo.get(String(userId));
+      return info || { name: 'User', image: null, isMuted: false, isVideoOff: true };
+    },
+    [participantsInfo]
+  );
 
-    const content = (
-      <>
-        {stream && hasVideo ? (
-          isLocal ? (
-            <video
-              ref={attachRef ? localVideoRef : undefined}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-              aria-label="Your video"
-            />
-          ) : (
-            <video
-              ref={(el) => {
-                if (el) {
-                  remoteVideosRef.current.set(id, el);
-                  if (stream && el.srcObject !== stream) {
-                    el.srcObject = stream;
-                    el.play().catch(() => {});
-                  }
+  const allParticipants = useMemo(() => {
+    // Use screen share stream if sharing, otherwise use local stream
+    const localDisplayStream = isScreenSharing && screenShareStream ? screenShareStream : localStream;
+    const list = [
+      {
+        id: 'local',
+        userId: selfId,
+        isLocal: true,
+        name: selfInfo.name,
+        image: selfInfo.image,
+        stream: localDisplayStream,
+        isMuted,
+        isVideoOff,
+        isScreenSharing,
+      },
+      ...remoteEntries.map(([userId, stream]) => {
+        const info = getParticipantInfo(userId);
+        return {
+          id: userId,
+          userId,
+          isLocal: false,
+          name: info.name,
+          image: info.image,
+          stream,
+          isMuted: info.isMuted ?? false,
+          isVideoOff: info.isVideoOff ?? false,
+        };
+      }),
+    ];
+    return list;
+  }, [remoteEntries, selfId, selfInfo, localStream, isMuted, isVideoOff, getParticipantInfo]);
+
+  const defaultMainId = useMemo(() => {
+    if (isDirectCall && remoteEntries.length > 0) {
+      return remoteEntries[0][0]; // Remote for direct call
+    }
+    return allParticipants[0]?.id || null;
+  }, [isDirectCall, remoteEntries, allParticipants]);
+
+  const mainId = focusedId !== null ? focusedId : defaultMainId;
+  const mainParticipant = allParticipants.find((p) => p.id === mainId);
+
+  const handleFocus = useCallback((id) => {
+    setFocusedId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const renderMainVideo = (participant) => {
+    if (!participant) return null;
+    const hasVideo = participant.stream?.getVideoTracks?.()?.some((t) => t.enabled);
+    const showVideo = hasVideo && (!participant.isVideoOff || participant.isScreenSharing);
+    const attachLocalRef = participant.isLocal && mainId === 'local' && !participant.isScreenSharing;
+
+    return (
+      <div className="relative w-full h-full rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center">
+        {showVideo ? (
+          <video
+            ref={attachLocalRef ? localVideoRef : participant.isLocal ? undefined : (el) => {
+              if (el && participant.userId) {
+                remoteVideosRef.current.set(participant.userId, el);
+                if (participant.stream && el.srcObject !== participant.stream) {
+                  el.srcObject = participant.stream;
+                  el.play().catch(() => {});
                 }
-              }}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-              aria-label={`${info?.name || 'User'}'s video`}
-            />
-          )
+              }
+            }}
+            autoPlay
+            playsInline
+            muted={participant.isLocal}
+            className="w-full h-full object-cover"
+            aria-label={`${participant.name}'s ${participant.isScreenSharing ? 'screen' : 'video'}`}
+          />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-700">
-            <Avatar src={info?.image} alt={info?.name || '?'} size={isMain ? '2xl' : 'lg'} fallback={info?.name || '?'} className="ring-2 ring-white/50" />
-            <span className="mt-1 text-xs font-medium text-white truncate max-w-full px-1">{info?.name || 'You'}</span>
+          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800">
+            <Avatar
+              src={participant.image}
+              alt={participant.name}
+              size="2xl"
+              fallback={participant.name}
+              className="ring-4 ring-white/30"
+            />
+            <span className="mt-4 text-lg font-semibold text-white">{participant.name}</span>
           </div>
         )}
-        <div className="absolute bottom-1 left-1 right-1 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-1.5 py-1 rounded text-[10px]">
-          <span className="font-medium text-white truncate flex-1">{info?.name || 'You'}</span>
-          <span className="flex items-center gap-0.5">
-            {isLocal ? (isMuted ? <MicOff className="h-2.5 w-2.5 text-red-400" /> : <Mic className="h-2.5 w-2.5 text-green-400" />) : (isMutedRemote ? <MicOff className="h-2.5 w-2.5 text-red-400" /> : <Mic className="h-2.5 w-2.5 text-green-400" />)}
-            {isLocal ? (isVideoOff ? <VideoOff className="h-2.5 w-2.5 text-red-400" /> : <Video className="h-2.5 w-2.5 text-green-400" />) : (info?.isVideoOff !== false && !hasVideo ? <VideoOff className="h-2.5 w-2.5 text-red-400" /> : <Video className="h-2.5 w-2.5 text-green-400" />)}
-          </span>
+        <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2 bg-black/70 backdrop-blur-sm px-3 py-2 rounded-lg">
+          <span className="text-sm font-medium text-white flex-1">{participant.name}</span>
+          <div className="flex items-center gap-1.5">
+            {participant.isScreenSharing && (
+              <ComputerDesktopIcon className="h-4 w-4 text-blue-400" strokeWidth={2.5} />
+            )}
+            {participant.isMuted ? (
+              <MicOff className="h-4 w-4 text-red-400" strokeWidth={2.5} />
+            ) : (
+              <Mic className="h-4 w-4 text-green-400" strokeWidth={2.5} />
+            )}
+            {participant.isScreenSharing ? null : participant.isVideoOff || !hasVideo ? (
+              <VideoOff className="h-4 w-4 text-red-400" strokeWidth={2.5} />
+            ) : (
+              <Video className="h-4 w-4 text-green-400" strokeWidth={2.5} />
+            )}
+          </div>
         </div>
-      </>
+      </div>
     );
-
-    return content;
   };
 
-  if (remoteEntries.length === 0) {
-    return (
-      <div ref={containerRef} className="relative w-full h-full min-h-[160px] rounded-lg overflow-hidden bg-slate-800">
-        <div className="absolute inset-0">{renderTile('local', true, localStream, selfInfo, true, true)}</div>
-      </div>
-    );
-  }
+  const renderCornerPreview = (participant) => {
+    if (!participant) return null;
+    const hasVideo = participant.stream?.getVideoTracks?.()?.some((t) => t.enabled);
+    const showVideo = hasVideo && !participant.isVideoOff;
+    const attachLocalRef = participant.isLocal && mainId !== 'local';
 
-  if (isDirectCall) {
-    const [remoteId, remoteStream] = remoteEntries[0];
-    const remoteInfo = getParticipantInfo(remoteId);
     return (
-      <div ref={containerRef} className="relative w-full h-full min-h-[160px] rounded-lg overflow-hidden bg-slate-800">
-        <div className="absolute inset-0">
-          {isLocalMain ? renderTile('local', true, localStream, selfInfo, true, true) : renderTile(remoteId, false, remoteStream, remoteInfo, true)}
+      <button
+        type="button"
+        onClick={() => handleFocus(participant.id)}
+        className="relative w-24 h-20 rounded-lg overflow-hidden bg-slate-800 hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer"
+        aria-label={`Focus on ${participant.name}`}
+      >
+        {showVideo ? (
+          <video
+            ref={attachLocalRef ? localVideoRef : participant.isLocal ? undefined : (el) => {
+              if (el && participant.userId) {
+                remoteVideosRef.current.set(participant.userId, el);
+                if (participant.stream && el.srcObject !== participant.stream) {
+                  el.srcObject = participant.stream;
+                  el.play().catch(() => {});
+                }
+              }
+            }}
+            autoPlay
+            playsInline
+            muted={participant.isLocal}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-slate-700">
+            <Avatar src={participant.image} alt={participant.name} size="md" fallback={participant.name} />
+          </div>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-1">
+          <p className="text-xs text-white truncate text-center">{participant.name}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setFocusedId(isLocalMain ? remoteId : 'local')}
-          className="absolute left-2 bottom-2 w-24 h-20 sm:w-28 sm:h-24 rounded-lg overflow-hidden border-2 border-white/80 shadow-lg hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 z-10 bg-slate-700 relative"
-        >
-          {isLocalMain ? renderTile(remoteId, false, remoteStream, remoteInfo, false) : renderTile('local', true, localStream, selfInfo, false, true)}
-        </button>
+        <div className="absolute top-1 right-1 flex gap-0.5">
+          {participant.isMuted ? (
+            <MicOff className="h-2.5 w-2.5 text-red-400" strokeWidth={3} />
+          ) : (
+            <Mic className="h-2.5 w-2.5 text-green-400" strokeWidth={3} />
+          )}
+        </div>
+      </button>
+    );
+  };
+
+  if (allParticipants.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-slate-900 rounded-lg">
+        <p className="text-gray-400">No participants</p>
       </div>
     );
   }
 
-  // Group call: one main + movable corner thumbnails
-  const allTiles = [
-    { id: 'local', isLocal: true, stream: localStream, info: selfInfo },
-    ...remoteEntries.map(([userId, stream]) => ({ id: userId, isLocal: false, stream, info: getParticipantInfo(userId) })),
-  ];
-  const mainTile = mainId ? allTiles.find((t) => t.id === mainId || (mainId === 'local' && t.isLocal)) : allTiles[0];
-  const thumbTiles = allTiles.filter((t) => t.id !== mainTile?.id);
-
-  return (
-    <div ref={containerRef} className="relative w-full h-full min-h-[200px] rounded-lg overflow-hidden bg-slate-800">
-      <div className="absolute inset-0">
-        {mainTile && renderTile(mainTile.id, mainTile.isLocal, mainTile.stream, mainTile.info, true, mainTile.isLocal)}
-      </div>
-      {thumbTiles.map((t, i) => {
-        const cornerIdx = thumbPositions[t.id] ?? i;
-        const style = {
-          position: 'absolute',
-          width: THUMB_SIZE,
-          height: THUMB_SIZE * 0.8,
-          ...getCornerStyle(cornerIdx),
-          zIndex: 10,
-        };
-        return (
-          <button
-            key={t.id}
-            id={`thumb-${t.id}`}
-            type="button"
-            onClick={() => setFocusedId(t.id)}
-            onMouseDown={(e) => handleThumbDragStart(e, t.id)}
-            onTouchStart={(e) => handleThumbDragStart(e, t.id)}
-            className="rounded-lg overflow-hidden border-2 border-white/80 shadow-lg hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-slate-700 cursor-grab active:cursor-grabbing"
-            style={style}
-          >
-            <div className="relative w-full h-full">
-              {renderTile(t.id, t.isLocal, t.stream, t.info, false, t.isLocal)}
+  // Direct call layout: main + corner preview
+  if (isDirectCall) {
+    const otherParticipant = allParticipants.find((p) => p.id !== mainId);
+    return (
+      <div className="w-full h-full flex flex-col gap-2">
+        <div className="flex-1 min-h-0 relative">
+          {renderMainVideo(mainParticipant)}
+          {otherParticipant && (
+            <div className="absolute top-3 left-3 z-10">
+              {renderCornerPreview(otherParticipant)}
             </div>
+          )}
+        </div>
+        {allParticipants.length > 2 && showParticipantsBelt && (
+          <ParticipantBelt
+            participants={allParticipants}
+            focusedId={mainId}
+            onFocus={handleFocus}
+            localStream={localStream}
+            remoteStreams={remoteStreams}
+            isMuted={isMuted}
+            isVideoOff={isVideoOff}
+            sessionUserId={selfId}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Group call layout: main + belt
+  return (
+    <div className="w-full h-full flex flex-col gap-2">
+      <div className="flex-1 min-h-0 relative">
+        {renderMainVideo(mainParticipant)}
+        {onToggleBelt && (
+          <button
+            type="button"
+            onClick={onToggleBelt}
+            className="absolute top-2 right-2 z-10 p-2 rounded-lg bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 transition-colors"
+            title={showParticipantsBelt ? 'Hide participants' : 'Show participants'}
+            aria-label={showParticipantsBelt ? 'Hide participants' : 'Show participants'}
+          >
+            {showParticipantsBelt ? (
+              <ChevronDownIcon className="h-5 w-5" strokeWidth={2} />
+            ) : (
+              <ChevronUpIcon className="h-5 w-5" strokeWidth={2} />
+            )}
           </button>
-        );
-      })}
+        )}
+      </div>
+      {showParticipantsBelt && (
+        <ParticipantBelt
+          participants={allParticipants}
+          focusedId={mainId}
+          onFocus={handleFocus}
+          localStream={localStream}
+          remoteStreams={remoteStreams}
+          isMuted={isMuted}
+          isVideoOff={isVideoOff}
+          sessionUserId={selfId}
+        />
+      )}
     </div>
   );
 }

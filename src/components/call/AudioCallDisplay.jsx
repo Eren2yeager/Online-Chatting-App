@@ -1,18 +1,43 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { Avatar } from '@/components/ui';
 import { Mic, MicOff } from 'lucide-react';
+import ParticipantBelt from './ParticipantBelt';
 
+/**
+ * Advanced audio call display with focus mode and participant belt
+ * Shows large avatar of focused participant, others in belt
+ */
 export default function AudioCallDisplay({
   localStream,
   remoteStreams,
   participantsInfo = new Map(),
   isMuted,
+  currentCall,
+  sessionUserId,
 }) {
   const { data: session } = useSession();
   const remoteAudiosRef = useRef(new Map());
+
+  const selfId = sessionUserId || session?.user?.id ? String(sessionUserId || session.user.id) : null;
+  const selfInfo = selfId
+    ? { name: session?.user?.name || 'You', image: session?.user?.image }
+    : { name: 'You', image: null };
+
+  const getParticipantInfo = useCallback(
+    (userId) => {
+      const info = participantsInfo.get(String(userId));
+      return info || { name: 'User', image: null, isMuted: false };
+    },
+    [participantsInfo]
+  );
+
+  const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
+  const isDirectCall = remoteEntries.length === 1;
+
+  const [focusedId, setFocusedId] = useState(null);
 
   useEffect(() => {
     remoteStreams.forEach((stream, userId) => {
@@ -24,100 +49,110 @@ export default function AudioCallDisplay({
     });
   }, [remoteStreams]);
 
-  const selfInfo = session?.user
-    ? { name: session.user.name || 'You', image: session.user.image }
-    : { name: 'You', image: null };
+  const allParticipants = useMemo(() => {
+    return [
+      {
+        id: 'local',
+        userId: selfId,
+        isLocal: true,
+        name: selfInfo.name,
+        image: selfInfo.image,
+        stream: localStream,
+        isMuted,
+      },
+      ...remoteEntries.map(([userId, stream]) => {
+        const info = getParticipantInfo(userId);
+        return {
+          id: userId,
+          userId,
+          isLocal: false,
+          name: info.name,
+          image: info.image,
+          stream,
+          isMuted: info.isMuted ?? false,
+        };
+      }),
+    ];
+  }, [remoteEntries, selfId, selfInfo, localStream, isMuted, getParticipantInfo]);
 
-  const getParticipantInfo = (userId) => {
-    const info = participantsInfo.get(String(userId));
-    return info || { name: 'User', image: null, isMuted: false };
-  };
+  const defaultMainId = useMemo(() => {
+    if (isDirectCall && remoteEntries.length > 0) {
+      return remoteEntries[0][0]; // Remote for direct call
+    }
+    return allParticipants[0]?.id || null;
+  }, [isDirectCall, remoteEntries, allParticipants]);
 
-  const remoteEntries = Array.from(remoteStreams.entries());
+  const mainId = focusedId !== null ? focusedId : defaultMainId;
+  const mainParticipant = allParticipants.find((p) => p.id === mainId);
+
+  const handleFocus = useCallback((id) => {
+    setFocusedId((prev) => (prev === id ? null : id));
+  }, []);
 
   return (
-    <div className="max-w-md mx-auto w-full" role="region" aria-label="Audio call participants">
-      <div className="rounded-xl border border-gray-200 bg-white p-6 sm:p-8 text-center space-y-6 shadow-sm">
-        <div className="text-6xl sm:text-7xl">🎙️</div>
-        <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">Audio Call</h2>
-
-        {/* Local status */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50">
-            <Avatar src={selfInfo.image} alt={selfInfo.name} size="lg" fallback={selfInfo.name} />
-            <div className="text-left">
-              <p className="font-medium text-gray-800">{selfInfo.name}</p>
-              <p className="text-sm text-gray-500 flex items-center gap-1">
-                {isMuted ? (
-                  <>
-                    <MicOff className="h-4 w-4 text-red-500" strokeWidth={2.5} />
-                    Muted
-                  </>
-                ) : (
-                  <>
-                    <Mic className="h-4 w-4 text-green-500" strokeWidth={2.5} />
-                    Unmuted
-                  </>
-                )}
-              </p>
+    <div className="w-full h-full flex flex-col gap-4" role="region" aria-label="Audio call participants">
+      {/* Main focused participant */}
+      <div className="flex-1 flex items-center justify-center min-h-0">
+        <div className="flex flex-col items-center gap-4">
+          <Avatar
+            src={mainParticipant?.image}
+            alt={mainParticipant?.name || 'User'}
+            size="2xl"
+            fallback={mainParticipant?.name || '?'}
+            className="ring-4 ring-blue-500/30"
+          />
+          <div className="text-center">
+            <h3 className="text-xl font-semibold text-gray-900">{mainParticipant?.name || 'User'}</h3>
+            <div className="flex items-center justify-center gap-2 mt-2">
+              {mainParticipant?.isMuted ? (
+                <>
+                  <MicOff className="h-5 w-5 text-red-500" strokeWidth={2.5} />
+                  <span className="text-sm text-gray-600">Muted</span>
+                </>
+              ) : (
+                <>
+                  <Mic className="h-5 w-5 text-green-500" strokeWidth={2.5} />
+                  <span className="text-sm text-gray-600">Speaking</span>
+                </>
+              )}
             </div>
           </div>
-
-          {/* Remote participants */}
-          {remoteEntries.map(([userId, stream]) => {
-            const info = getParticipantInfo(userId);
-            const isMutedRemote = info.isMuted ?? false;
-            return (
-              <div
-                key={userId}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50"
-              >
-                <Avatar src={info.image} alt={info.name} size="lg" fallback={info.name} />
-                <div className="text-left">
-                  <p className="font-medium text-gray-800 truncate max-w-[120px]">{info.name}</p>
-                  <p className="text-sm text-gray-500 flex items-center gap-1">
-                    {isMutedRemote ? (
-                      <>
-                        <MicOff className="h-4 w-4 text-red-500" strokeWidth={2.5} />
-                        Muted
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="h-4 w-4 text-green-500" strokeWidth={2.5} />
-                        Unmuted
-                      </>
-                    )}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
         </div>
+      </div>
 
-        <p className="text-sm text-gray-500">
-          {remoteEntries.length} participant{remoteEntries.length !== 1 ? 's' : ''} connected
-        </p>
+      {/* Participant belt */}
+      {allParticipants.length > 1 && (
+        <ParticipantBelt
+          participants={allParticipants}
+          focusedId={mainId}
+          onFocus={handleFocus}
+          localStream={localStream}
+          remoteStreams={remoteStreams}
+          isMuted={isMuted}
+          isVideoOff={false}
+          sessionUserId={selfId}
+        />
+      )}
 
-        {/* Hidden audio elements for remote streams */}
-        <div className="sr-only" aria-hidden>
-          {remoteEntries.map(([userId, stream]) => (
-            <audio
-              key={userId}
-              ref={(el) => {
-                if (el) {
-                  remoteAudiosRef.current.set(userId, el);
-                  if (stream && el.srcObject !== stream) {
-                    el.srcObject = stream;
-                    el.play().catch(() => {});
-                  }
+      {/* Hidden audio elements */}
+      <div className="sr-only" aria-hidden>
+        {remoteEntries.map(([userId, stream]) => (
+          <audio
+            key={userId}
+            ref={(el) => {
+              if (el) {
+                remoteAudiosRef.current.set(userId, el);
+                if (stream && el.srcObject !== stream) {
+                  el.srcObject = stream;
+                  el.play().catch(() => {});
                 }
-              }}
-              autoPlay
-              playsInline
-              aria-hidden
-            />
-          ))}
-        </div>
+              }
+            }}
+            autoPlay
+            playsInline
+            aria-hidden
+          />
+        ))}
       </div>
     </div>
   );

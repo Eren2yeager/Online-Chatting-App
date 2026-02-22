@@ -1,7 +1,205 @@
 import { nanoid } from 'nanoid';
 import Call from '../../src/models/Call.mjs';
+import Message from '../../src/models/Message.mjs';
+import Notification from '../../src/models/Notification.mjs';
+import Chat from '../../src/models/Chat.mjs';
 
 const MAX_PARTICIPANTS = parseInt(process.env.MAX_CALL_PARTICIPANTS || '4');
+
+/**
+ * Helper: Find or create a chat for call participants
+ */
+async function findOrCreateChatForCall(participantIds) {
+  if (participantIds.length < 2) return null;
+  
+  // For direct calls, find existing 1:1 chat
+  if (participantIds.length === 2) {
+    const chat = await Chat.findOne({
+      isGroup: false,
+      participants: { $all: participantIds, $size: 2 }
+    });
+    if (chat) return chat;
+    
+    // Create new 1:1 chat
+    return await Chat.create({
+      isGroup: false,
+      participants: participantIds,
+      createdBy: participantIds[0],
+    });
+  }
+  
+  // For group calls, find existing group chat with same participants
+  const sortedIds = [...participantIds].sort().map(id => id.toString());
+  const chat = await Chat.findOne({
+    isGroup: true,
+    participants: { $all: participantIds, $size: participantIds.length }
+  });
+  if (chat) return chat;
+  
+  // Create new group chat
+  return await Chat.create({
+    isGroup: true,
+    participants: participantIds,
+    createdBy: participantIds[0],
+    name: `Group Call Chat`,
+  });
+}
+
+/**
+ * Helper: Create call started system message
+ */
+async function createCallStartedMessage(call, chatId, io) {
+  if (!chatId) return;
+  
+  try {
+    const participantIds = call.participants.map(p => p.userId.toString());
+    const callTypeLabel = call.callType === 'video' ? 'Video' : 'Audio';
+    
+    const systemMessage = await Message.create({
+      chatId,
+      sender: call.initiator,
+      type: 'system',
+      text: `${callTypeLabel} call started`,
+      system: {
+        event: 'call_started',
+        targets: participantIds,
+        callId: call._id,
+        callType: call.callType,
+      },
+    });
+    
+    await systemMessage.populate('sender', 'name image handle');
+    
+    // Update chat last message
+    await Chat.findByIdAndUpdate(chatId, {
+      lastMessage: systemMessage._id,
+      lastActivity: new Date(),
+    });
+    
+    // Broadcast to chat room
+    io.to(`chat:${chatId}`).emit('message:new', {
+      message: systemMessage,
+      chatId,
+    });
+    
+    console.log(`✅ [CALL] Created call started message in chat ${chatId}`);
+  } catch (error) {
+    console.error(`❌ [CALL] Error creating call started message:`, error);
+  }
+}
+
+/**
+ * Helper: Create call ended system message
+ */
+async function createCallEndedMessage(call, chatId, io) {
+  if (!chatId) return;
+  
+  try {
+    const duration = call.endedAt && call.connectedAt
+      ? Math.floor((new Date(call.endedAt) - new Date(call.connectedAt)) / 1000)
+      : 0;
+    const callTypeLabel = call.callType === 'video' ? 'Video' : 'Audio';
+    const durationText = duration > 0 ? ` (${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')})` : '';
+    
+    const systemMessage = await Message.create({
+      chatId,
+      sender: call.initiator,
+      type: 'system',
+      text: `${callTypeLabel} call ended${durationText}`,
+      system: {
+        event: 'call_ended',
+        targets: call.participants.map(p => p.userId.toString()),
+        callId: call._id,
+        callDuration: duration,
+        callType: call.callType,
+      },
+    });
+    
+    await systemMessage.populate('sender', 'name image handle');
+    
+    // Update chat last message
+    await Chat.findByIdAndUpdate(chatId, {
+      lastMessage: systemMessage._id,
+      lastActivity: new Date(),
+    });
+    
+    // Broadcast to chat room
+    io.to(`chat:${chatId}`).emit('message:new', {
+      message: systemMessage,
+      chatId,
+    });
+    
+    console.log(`✅ [CALL] Created call ended message in chat ${chatId}`);
+  } catch (error) {
+    console.error(`❌ [CALL] Error creating call ended message:`, error);
+  }
+}
+
+/**
+ * Helper: Create call notifications
+ */
+async function createCallNotifications(call, eventType, userSockets, io) {
+  try {
+    const participantIds = call.participants.map(p => p.userId.toString());
+    const initiatorId = call.initiator.toString();
+    const callTypeLabel = call.callType === 'video' ? 'Video' : 'Audio';
+    
+    for (const participant of call.participants) {
+      const participantId = participant.userId.toString();
+      
+      // Skip initiator for started notifications
+      if (eventType === 'call_started' && participantId === initiatorId) continue;
+      
+      // Only create missed call notification for users who didn't join
+      if (eventType === 'call_missed' && participant.status === 'joined') continue;
+      
+      // Check if user is online
+      const isOnline = userSockets.has(participantId);
+      
+      // Create notification for offline users or missed calls
+      if (!isOnline || eventType === 'call_missed') {
+        let title, body;
+        
+        if (eventType === 'call_started') {
+          title = `${callTypeLabel} call started`;
+          body = `A ${callTypeLabel.toLowerCase()} call is in progress`;
+        } else if (eventType === 'call_ended') {
+          const duration = call.endedAt && call.connectedAt
+            ? Math.floor((new Date(call.endedAt) - new Date(call.connectedAt)) / 1000)
+            : 0;
+          title = `${callTypeLabel} call ended`;
+          body = duration > 0 
+            ? `Call ended after ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`
+            : 'Call ended';
+        } else if (eventType === 'call_missed') {
+          title = `Missed ${callTypeLabel.toLowerCase()} call`;
+          body = `You missed a ${callTypeLabel.toLowerCase()} call`;
+        }
+        
+        const notification = await Notification.create({
+          to: participant.userId,
+          type: eventType,
+          title,
+          body,
+          data: { callId: call._id, roomId: call.roomId, callType: call.callType },
+          fromUser: call.initiator,
+        });
+        
+        await notification.populate('fromUser', 'name image handle');
+        
+        // Emit to user if online
+        const targetSocketId = userSockets.get(participantId);
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('notification:new', { notification });
+        }
+        
+        console.log(`✅ [CALL] Created ${eventType} notification for user ${participantId}`);
+      }
+    }
+  } catch (error) {
+    console.error(`❌ [CALL] Error creating call notifications:`, error);
+  }
+}
 
 /**
  * Register room-based call handlers with MongoDB tracking
@@ -121,6 +319,23 @@ export function registerCallHandlersV2(socket, io, userSockets) {
         } else {
           offlineTargets.push(targetId);
           console.log(`⚠️ [CALL:INITIATE] Target ${targetId} is offline - call will keep ringing`);
+          
+          // Create incoming call notification for offline users
+          try {
+            const callTypeLabel = callType === 'video' ? 'Video' : 'Audio';
+            const notification = await Notification.create({
+              to: targetId,
+              type: 'call_started',
+              title: `Incoming ${callTypeLabel.toLowerCase()} call`,
+              body: `${socket.user.name} is calling you`,
+              data: { callId: call._id, roomId: call.roomId, callType },
+              fromUser: socket.userId,
+            });
+            await notification.populate('fromUser', 'name image handle');
+            console.log(`✅ [CALL:INITIATE] Created incoming call notification for offline user ${targetId}`);
+          } catch (error) {
+            console.error(`❌ [CALL:INITIATE] Error creating notification:`, error);
+          }
         }
       }
 
@@ -171,12 +386,32 @@ export function registerCallHandlersV2(socket, io, userSockets) {
 
       // Update participant status
       call.updateParticipantStatus(socket.userId, 'joined');
+      
+      // Check if this is the first join (call is connecting)
+      const joinedCount = call.participants.filter(p => p.status === 'joined').length;
+      const isFirstJoin = joinedCount === 1;
+      
+      if (isFirstJoin) {
+        call.status = 'active';
+        call.connectedAt = new Date();
+      }
+      
       await call.save();
       console.log(`✅ [CALL:ACCEPT] Updated participant status to 'joined'`);
 
       // Join the room
       socket.join(roomId);
       console.log(`✅ [CALL:ACCEPT] User ${socket.userId} joined room ${roomId}`);
+
+      // Create call started message and notifications if first join
+      if (isFirstJoin) {
+        const participantIds = call.participants.map(p => p.userId.toString());
+        const chat = await findOrCreateChatForCall(participantIds);
+        if (chat) {
+          await createCallStartedMessage(call, chat._id, io);
+          await createCallNotifications(call, 'call_started', userSockets, io);
+        }
+      }
 
       // Notify all participants in the room (including the one who just joined)
       io.to(roomId).emit("call:participant-joined", {
@@ -230,13 +465,18 @@ export function registerCallHandlersV2(socket, io, userSockets) {
       
       console.log(`[CALL:REJECT] Active participants remaining: ${activeParticipants.length}`);
       
-      if (activeParticipants.length <= 1) {
+      const callCancelled = activeParticipants.length <= 1;
+      
+      if (callCancelled) {
         call.status = 'cancelled';
         call.endedAt = new Date();
         console.log(`[CALL:REJECT] Call cancelled - not enough participants`);
       }
       
       await call.save();
+      
+      // Create missed call notification
+      await createCallNotifications(call, 'call_missed', userSockets, io);
 
       // Notify everyone in the room about rejection
       io.to(roomId).emit("call:participant-rejected", {
@@ -293,11 +533,21 @@ export function registerCallHandlersV2(socket, io, userSockets) {
       const activeParticipants = call.participants.filter(p => p.status === 'joined');
       console.log(`[CALL:LEAVE] Active participants remaining: ${activeParticipants.length}`);
       
+      const callEnded = activeParticipants.length <= 1;
+      
       // End call if only one or no participants left
-      if (activeParticipants.length <= 1) {
+      if (callEnded) {
         call.status = 'ended';
         call.endedAt = new Date();
         console.log(`[CALL:LEAVE] Call ended - only ${activeParticipants.length} participant(s) remaining`);
+        
+        // Create call ended message and notifications
+        const participantIds = call.participants.map(p => p.userId.toString());
+        const chat = await findOrCreateChatForCall(participantIds);
+        if (chat) {
+          await createCallEndedMessage(call, chat._id, io);
+          await createCallNotifications(call, 'call_ended', userSockets, io);
+        }
       }
       
       await call.save();
@@ -309,11 +559,11 @@ export function registerCallHandlersV2(socket, io, userSockets) {
       io.to(roomId).emit("call:participant-left", {
         userId: socket.userId,
         userName: socket.user.name,
-        callEnded: call.status === 'ended',
+        callEnded,
       });
 
-      console.log(`✅ [CALL:LEAVE] User ${socket.userId} left call: ${roomId}, call ended: ${call.status === 'ended'}`);
-      ack?.({ success: true, callEnded: call.status === 'ended' });
+      console.log(`✅ [CALL:LEAVE] User ${socket.userId} left call: ${roomId}, call ended: ${callEnded}`);
+      ack?.({ success: true, callEnded });
     } catch (error) {
       console.error(`❌ [CALL:LEAVE] Error:`, error);
       ack?.({ success: false, error: "Failed to leave call" });

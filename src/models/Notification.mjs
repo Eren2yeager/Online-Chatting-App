@@ -10,7 +10,7 @@ const NotificationSchema = new mongoose.Schema({
   // Notification type
   type: {
     type: String,
-    enum: ['friend_request', 'friend_request_accepted', 'message', 'group_invite', 'group_update', 'reaction'],
+    enum: ['friend_request', 'friend_request_accepted', 'message', 'group_invite', 'group_update', 'reaction', 'call_started', 'call_ended', 'call_missed'],
     required: true
   },
   // Notification title
