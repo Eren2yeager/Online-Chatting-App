@@ -4,3 +4,4 @@ export { registerMessageHandlers } from "./message.handler.mjs";
 export { registerTypingHandlers } from "./typing.handler.mjs";
 export { registerUserHandlers } from "./user.handler.mjs";
 export { registerNotificationHandlers } from "./notification.handler.mjs";
+export { registerCallHandlersV2 } from "./call-v2.handler.mjs";

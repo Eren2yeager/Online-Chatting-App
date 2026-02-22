@@ -69,8 +69,8 @@ export function registerMessageHandlers(socket, io, userSockets) {
 
       // Broadcast to all chat participants
       const chatRoom = `chat:${chatId}`;
-      console.log(`Broadcasting message to room: ${chatRoom}`);
-      console.log(`Room members:`, io.sockets.adapter.rooms.get(chatRoom)?.size || 0);
+      console.log(` SOCKET SERVER LOG  :  Broadcasting message to room: ${chatRoom}`);
+      console.log(` SOCKET SERVER LOG  :  Room members:`, io.sockets.adapter.rooms.get(chatRoom)?.size || 0);
       
       io.to(chatRoom).emit("message:new", {
         message,
@@ -166,14 +166,14 @@ export function registerMessageHandlers(socket, io, userSockets) {
 
       const message = await Message.findById(messageId);
       if (!message) {
-        console.log("Message not found:", messageId);
+        console.log(" SOCKET SERVER LOG  :  Message not found:", messageId);
         return ack?.({ success: false, error: "Message not found" });
       }
 
       if (deleteForEveryone) {
         // Verify ownership for delete-for-everyone
         if (message.sender.toString() !== socket.userId) {
-          console.log("User not authorized to delete for everyone");
+          console.log(" SOCKET SERVER LOG  :  User not authorized to delete for everyone");
           return ack?.({
             success: false,
             error: "You can only delete your own messages for everyone",
@@ -195,7 +195,7 @@ export function registerMessageHandlers(socket, io, userSockets) {
           message.media = [];
           await message.save();
 
-          console.log("Message deleted for everyone:", messageId);
+          console.log(" SOCKET SERVER LOG  :  Message deleted for everyone:", messageId);
 
           // Emit to all users in the chat
           io.to(`chat:${message.chatId}`).emit("message:delete", {
@@ -207,7 +207,7 @@ export function registerMessageHandlers(socket, io, userSockets) {
           ack?.({ success: true });
         } else {
           const minutesAgo = Math.floor(timeDiff / 60000);
-          console.log(`Delete window expired: ${minutesAgo} minutes ago`);
+          console.log(` SOCKET SERVER LOG  :  Delete window expired: ${minutesAgo} minutes ago`);
           return ack?.({
             success: false,
             error: `Can only delete within 2 minutes (sent ${minutesAgo} min ago)`,
@@ -215,7 +215,7 @@ export function registerMessageHandlers(socket, io, userSockets) {
         }
       } else {
         // Delete for me only
-        console.log("Deleting for user only:", socket.userId);
+        console.log(" SOCKET SERVER LOG  :  Deleting for user only:", socket.userId);
 
         if (!message.deletedFor.includes(socket.userId)) {
           message.deletedFor.push(socket.userId);
@@ -229,7 +229,7 @@ export function registerMessageHandlers(socket, io, userSockets) {
           deleteForEveryone: false,
         });
 
-        console.log("Message deleted for user:", messageId);
+        console.log(" SOCKET SERVER LOG  :  Message deleted for user:", messageId);
         ack?.({ success: true });
       }
     } catch (error) {
@@ -309,22 +309,22 @@ export function registerMessageHandlers(socket, io, userSockets) {
    */
   socket.on("message:read", async (data, ack) => {
     try {
-      console.log("📖 Server: message:read received", { data, userId: socket.userId });
+      console.log(" SOCKET SERVER LOG  :  📖 Server: message:read received", { data, userId: socket.userId });
       const { messageId, chatId } = data;
 
       const message = await Message.findById(messageId);
       if (!message) {
-        console.log("❌ Message not found:", messageId);
+        console.log(" SOCKET SERVER LOG  :  ❌ Message not found:", messageId);
         return ack?.({ success: false, error: "Message not found" });
       }
 
-      console.log("📖 Message found, current readBy:", message.readBy);
+      console.log(" SOCKET SERVER LOG  :  📖 Message found, current readBy:", message.readBy);
 
       if (!message.readBy.includes(socket.userId)) {
         message.readBy.push(socket.userId);
         await message.save();
 
-        console.log("📖 Updated readBy:", message.readBy);
+        console.log(" SOCKET SERVER LOG  :  📖 Updated readBy:", message.readBy);
 
         // Broadcast read receipt with full readBy array
         io.to(`chat:${chatId}`).emit("message:read", {
@@ -334,9 +334,9 @@ export function registerMessageHandlers(socket, io, userSockets) {
           readBy: message.readBy,
         });
 
-        console.log("📖 Broadcasted read receipt to chat:", chatId);
+        console.log(" SOCKET SERVER LOG  :  📖 Broadcasted read receipt to chat:", chatId);
       } else {
-        console.log("📖 User already in readBy array");
+        console.log(" SOCKET SERVER LOG  :  📖 User already in readBy array");
       }
 
       ack?.({ success: true });

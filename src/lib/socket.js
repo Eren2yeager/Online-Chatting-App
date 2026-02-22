@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { io } from 'socket.io-client';
 import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
@@ -183,7 +183,7 @@ export function useSocketEmitter() {
     }
 
     try {
-      console.log('Emitting socket event:', event, data);
+      // console.log('Emitting socket event:', event, data);
       socket.emit(event, data);
       return true;
     } catch (error) {

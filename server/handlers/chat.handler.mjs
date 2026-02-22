@@ -224,7 +224,7 @@ export function registerChatHandlers(socket, io, userSockets) {
       const chatRoom = `chat:${chatId}`;
       socket.join(chatRoom);
       
-      console.log(`User ${socket.userId} joined chat room: ${chatRoom}`);
+      console.log(` SOCKET SERVER LOG  :  User ${socket.userId} joined chat room: ${chatRoom}`);
       ack?.({ success: true });
     } catch (error) {
       console.error("chat:join error:", error);

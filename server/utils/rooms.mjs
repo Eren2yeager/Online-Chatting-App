@@ -22,7 +22,7 @@ export async function joinUserToChats(socket, userId, userRooms) {
 
     // Store all rooms including user room
     userRooms.set(userId, [userRoom, ...roomIds]);
-    console.log(`User ${userId} joined personal room and ${roomIds.length} chat rooms`);
+    console.log(` SOCKET SERVER LOG  :  User ${userId} joined personal room and ${roomIds.length} chat rooms`);
   } catch (error) {
     console.error("Error joining user to chats:", error);
   }
@@ -38,26 +38,26 @@ export async function joinUserToChats(socket, userId, userRooms) {
 export function joinParticipantsToChat(io, chatId, participantIds, userSockets) {
   const chatRoom = `chat:${chatId}`;
   
-  console.log(`Joining participants to chat room: ${chatRoom}`);
-  console.log(`Participants:`, participantIds);
-  console.log(`Available sockets:`, Array.from(userSockets.keys()));
+  console.log(` SOCKET SERVER LOG  :  Joining participants to chat room: ${chatRoom}`);
+  console.log(` SOCKET SERVER LOG  :  Participants:`, participantIds);
+  console.log(` SOCKET SERVER LOG  :  Available sockets:`, Array.from(userSockets.keys()));
   
   for (const participantId of participantIds) {
     const participantIdStr = participantId.toString();
     const socketId = userSockets.get(participantIdStr);
     
-    console.log(`Checking participant ${participantIdStr}: socketId = ${socketId}`);
+    console.log(` SOCKET SERVER LOG  :  Checking participant ${participantIdStr}: socketId = ${socketId}`);
     
     if (socketId) {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
         socket.join(chatRoom);
-        console.log(`✅ User ${participantIdStr} joined chat room: ${chatRoom}`);
+        console.log(` SOCKET SERVER LOG  :  ✅ User ${participantIdStr} joined chat room: ${chatRoom}`);
       } else {
-        console.log(`❌ Socket not found for socketId: ${socketId}`);
+        console.log(` SOCKET SERVER LOG  :  ❌ Socket not found for socketId: ${socketId}`);
       }
     } else {
-      console.log(`❌ No socketId found for user: ${participantIdStr}`);
+      console.log(` SOCKET SERVER LOG  :  ❌ No socketId found for user: ${participantIdStr}`);
     }
   }
 }

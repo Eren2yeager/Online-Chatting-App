@@ -1,4 +1,4 @@
-"use client";
+'use client';
 import { useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";

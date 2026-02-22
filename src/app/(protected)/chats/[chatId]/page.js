@@ -11,7 +11,9 @@ import {
   UserIcon,
   Bars3Icon,
   XMarkIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  PhoneIcon,
+  VideoCameraIcon
 } from '@heroicons/react/24/outline';
 import CustomChatIcon from '@/components/icons/CustomChatIcon';
 import ChatSidebar from '../../../../components/chat/ChatSidebar';
@@ -21,6 +23,7 @@ import FriendRequestsModal from '../../../../components/chat/FriendRequestsModal
 import ResizableLayout from '../../../../components/chat/ResizableLayout';
 import { useSocket } from '@/lib/socket';
 import { Loader } from '@/components/ui';
+import { useCall } from '@/contexts/CallContext';
 /**
  * Individual chat page with responsive layout
  * Handles chat list, chat window, and mobile navigation
@@ -30,6 +33,7 @@ export default function ChatPage() {
   const router = useRouter();
   const { socket, isConnected } = useSocket();
   const {chatId} = useParams()
+  const { initiateCall } = useCall();
   // const chatId = c;
   const [selectedChat, setSelectedChat] = useState(null);
   const [chats, setChats] = useState([]);
@@ -429,6 +433,9 @@ export default function ChatPage() {
           fetchChats();
         }}
       />
+
+
+      
     </div>
   );
 }

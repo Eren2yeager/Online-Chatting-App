@@ -31,9 +31,9 @@ export async function createAndEmitNotification(io, userSockets, notificationDat
         notification: notification.toObject(),
         unreadCount,
       });
-      console.log(`✅ Notification sent to user ${notificationData.to}, unread: ${unreadCount}`);
+      console.log(` SOCKET SERVER LOG  :  ✅ Notification sent to user ${notificationData.to}, unread: ${unreadCount}`);
     } else {
-      console.log(`User ${notificationData.to} is offline, notification saved to DB`);
+      console.log(` SOCKET SERVER LOG  :  User ${notificationData.to} is offline, notification saved to DB`);
     }
 
     return notification;
@@ -52,7 +52,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
    * Mark notification as read
    */
   socket.on('notification:mark-read', async ({ notificationId }, callback) => {
-    console.log('📖 Server: Mark as read request:', notificationId);
+    console.log(' SOCKET SERVER LOG  :  📖 Server: Mark as read request:', notificationId);
     try {
       const notification = await Notification.findOneAndUpdate(
         { _id: notificationId, to: socket.userId },
@@ -61,7 +61,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
       );
 
       if (!notification) {
-        console.log('❌ Server: Notification not found');
+        console.log(' SOCKET SERVER LOG  :  ❌ Server: Notification not found');
         return callback?.({ success: false, error: 'Notification not found' });
       }
 
@@ -71,7 +71,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
         read: false,
       });
 
-      console.log('✅ Server: Marked as read, unread count:', unreadCount);
+      console.log(' SOCKET SERVER LOG  :  ✅ Server: Marked as read, unread count:', unreadCount);
 
       // Emit to user's other devices
       const userSocketId = userSockets.get(socket.userId);
@@ -87,7 +87,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
         notification: notification.toObject(),
         unreadCount 
       });
-      console.log('✅ Server: Callback sent');
+      console.log(' SOCKET SERVER LOG  :  ✅ Server: Callback sent');
     } catch (error) {
       console.error('❌ Server: Error marking notification as read:', error);
       callback?.({ success: false, error: error.message });
@@ -123,7 +123,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
    * Delete notification
    */
   socket.on('notification:delete', async ({ notificationId }, callback) => {
-    console.log('🗑️ Server: Delete request:', notificationId);
+    console.log(' SOCKET SERVER LOG  :  🗑️ Server: Delete request:', notificationId);
     try {
       const notification = await Notification.findOneAndDelete({
         _id: notificationId,
@@ -131,7 +131,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
       });
 
       if (!notification) {
-        console.log('❌ Server: Notification not found');
+        console.log(' SOCKET SERVER LOG  :  ❌ Server: Notification not found');
         return callback?.({ success: false, error: 'Notification not found' });
       }
 
@@ -141,7 +141,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
         read: false,
       });
 
-      console.log('✅ Server: Deleted, unread count:', unreadCount);
+      console.log(' SOCKET SERVER LOG  :  ✅ Server: Deleted, unread count:', unreadCount);
 
       // Emit to user's other devices
       const userSocketId = userSockets.get(socket.userId);
@@ -153,7 +153,7 @@ export function registerNotificationHandlers(socket, io, userSockets) {
       }
 
       callback?.({ success: true, unreadCount });
-      console.log('✅ Server: Callback sent');
+      console.log(' SOCKET SERVER LOG  :  ✅ Server: Callback sent');
     } catch (error) {
       console.error('❌ Server: Error deleting notification:', error);
       callback?.({ success: false, error: error.message });

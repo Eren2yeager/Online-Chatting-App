@@ -12,6 +12,7 @@ server/
 │   ├── message.handler.js   # Message events
 │   ├── typing.handler.js    # Typing indicators
 │   ├── user.handler.js      # User profile & blocking
+│   ├── call.handler.js      # WebRTC calling (NEW)
 │   └── index.js             # Handler exports
 ├── utils/              # Utility functions
 │   ├── auth.js              # Socket authentication
@@ -20,6 +21,7 @@ server/
 │   └── typing.js            # Typing indicator tracking
 ├── socket-server.js    # Main server file
 ├── SOCKET_EVENTS.md    # Complete event documentation
+├── CALLING_SYSTEM.md   # WebRTC calling documentation (NEW)
 ├── MIGRATION_GUIDE.md  # HTTP to Socket migration guide
 └── README.md           # This file
 ```
@@ -33,6 +35,15 @@ server/
 - Typing indicators
 - Reply to messages
 - Media attachments
+
+### WebRTC Calling (NEW)
+- Peer-to-peer audio calls
+- Peer-to-peer video calls
+- Call signaling via Socket.IO
+- Mute/unmute audio
+- Toggle video on/off
+- Screen sharing with track replacement
+- ICE candidate exchange for NAT traversal
 
 ### Chat Management
 - Create direct and group chats
@@ -122,6 +133,30 @@ const socket = io('http://localhost:3000', {
 - `profile:update` - Update user profile
 - `user:block` - Block a user
 - `user:unblock` - Unblock a user
+
+### Call Handler (`handlers/call.handler.js`) - NEW
+- `call:initiate` - Start a call with another user
+- `call:accept` - Accept an incoming call
+- `call:reject` - Reject an incoming call
+- `call:end` - End an active call
+- `call:ice-candidate` - Exchange ICE candidates
+- `call:toggle-audio` - Mute/unmute audio
+- `call:toggle-video` - Turn video on/off
+- `call:screen-share` - Start/stop screen sharing
+
+### Call Handler V2 (`handlers/call-v2.handler.js`) - ROOM-BASED (ACTIVE)
+- `call:initiate` - Start a call (creates room & MongoDB record)
+- `call:accept` - Accept and join call room
+- `call:reject` - Reject incoming call
+- `call:leave` - Leave/end call
+- `call:cancel` - Cancel call before anyone joins
+- `call:offer` - Send WebRTC offer
+- `call:answer` - Send WebRTC answer
+- `call:ice-candidate` - Exchange ICE candidates
+- `call:toggle-audio` - Mute/unmute audio
+- `call:toggle-video` - Turn video on/off
+- `call:screen-share` - Start/stop screen sharing
+- `call:add-participant` - Add user to ongoing call
 
 ## Utilities
 

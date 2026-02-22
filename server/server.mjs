@@ -15,6 +15,7 @@ import {
   registerTypingHandlers,
   registerUserHandlers,
   registerNotificationHandlers,
+  registerCallHandlersV2,
 } from "./handlers/index.mjs";
 
 // Import utilities
@@ -81,7 +82,7 @@ app.prepare().then(() => {
 
   // Socket connection handler
   io.on("connection", async (socket) => {
-    console.log(`User ${socket.userId} connected`);
+    console.log(` SOCKET SERVER LOG  :  User ${socket.userId} connected`);
 
     // Store socket mapping
     userSockets.set(socket.userId, socket.id);
@@ -99,7 +100,7 @@ app.prepare().then(() => {
     // Handle presence requests
     socket.on("presence:get-online", () => {
       const onlineUserIds = Array.from(userSockets.keys());
-      // console.log(`Sending online users to ${socket.userId}:`, onlineUserIds);
+      // console.log(` SOCKET SERVER LOG  :  Sending online users to ${socket.userId}:`, onlineUserIds);
       socket.emit("presence:online-users", { userIds: onlineUserIds });
     });
 
@@ -110,10 +111,12 @@ app.prepare().then(() => {
     registerTypingHandlers(socket);
     registerUserHandlers(socket, io, userSockets);
     registerNotificationHandlers(socket, io, userSockets);
+    // registerCallHandlers(socket, io, userSockets); // Old handler - commented out
+    registerCallHandlersV2(socket, io, userSockets); // New room-based handler
 
     // Handle disconnection
     socket.on("disconnect", async () => {
-      console.log(`User ${socket.userId} disconnected`);
+      console.log(` SOCKET SERVER LOG  :  User ${socket.userId} disconnected`);
 
       // Remove socket mapping
       userSockets.delete(socket.userId);
@@ -133,6 +136,6 @@ app.prepare().then(() => {
       process.exit(1);
     })
     .listen(port, () => {
-      console.log(`> Ready on http://${hostname}:${port}`);
+      console.log(`Ready on http://${hostname}:${port}`);
     });
 });

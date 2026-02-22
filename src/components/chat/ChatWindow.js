@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
@@ -27,6 +27,7 @@ import {
 import { Avatar, Badge, Button, Spinner } from "@/components/ui";
 import { useToast } from "../layout/ToastContext";
 import { useUnreadCount } from "../layout/UnreadCountContext";
+import { CallButtons } from "@/components/call";
 /**
  * Chat window component for displaying and sending messages
  */
@@ -602,6 +603,17 @@ export default function ChatWindow({
               )}
             </div>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isOneToOne && otherParticipant && (
+            <CallButtons
+              targetUserId={otherParticipant._id}
+              floating={false}
+              className="flex items-center gap-2"
+              audioLabel="Audio"
+              videoLabel="Video"
+            />
+          )}
         </div>
       </div>
 

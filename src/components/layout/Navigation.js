@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,7 +12,7 @@ import {
   VideoCameraIcon,
   MusicalNoteIcon,
   DocumentIcon,
-  MicrophoneIcon,
+  MicrophoneSlashIcon,
 } from "@heroicons/react/24/outline";
 import { useSocketEmitter } from "@/lib/socket";
 import EmojiPicker from "../common/EmojiPicker";

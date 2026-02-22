@@ -4,15 +4,21 @@ import { SocketProvider } from "@/lib/socket";
 import { ToastProvider } from "@/components/layout/ToastContext";
 import { NotificationProvider } from "@/components/layout/NotificationContext";
 import { UnreadCountProvider } from "@/components/layout/UnreadCountContext";
-import { getWebsiteStructuredData, getOrganizationStructuredData } from "@/lib/seo/structuredData";
+import { CallProvider } from "@/contexts/CallContext";
+import { CallWindow } from "@/components/call";
+import {
+  getWebsiteStructuredData,
+  getOrganizationStructuredData,
+} from "@/lib/seo/structuredData";
 
 export const metadata = {
-  metadataBase: new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000'),
+  metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
   title: {
     default: "ChatApp - Real-Time Messaging & Video Chat Platform",
-    template: "%s | ChatApp"
+    template: "%s | ChatApp",
   },
-  description: "Connect instantly with friends and family through ChatApp. Enjoy real-time messaging, video calls, group chats, media sharing, and secure communication. Free, fast, and easy to use.",
+  description:
+    "Connect instantly with friends and family through ChatApp. Enjoy real-time messaging, video calls, group chats, media sharing, and secure communication. Free, fast, and easy to use.",
   keywords: [
     "chat app",
     "real-time messaging",
@@ -24,7 +30,7 @@ export const metadata = {
     "web chat",
     "messaging platform",
     "chat application",
-    "communication app"
+    "communication app",
   ],
   authors: [{ name: "ChatApp Team" }],
   creator: "ChatApp",
@@ -40,7 +46,8 @@ export const metadata = {
     url: "/",
     siteName: "ChatApp",
     title: "ChatApp - Real-Time Messaging & Video Chat Platform",
-    description: "Connect instantly with friends and family through secure real-time messaging, video calls, and group chats.",
+    description:
+      "Connect instantly with friends and family through secure real-time messaging, video calls, and group chats.",
     images: [
       {
         url: "/og-image.jpg",
@@ -53,7 +60,8 @@ export const metadata = {
   twitter: {
     card: "summary_large_image",
     title: "ChatApp - Real-Time Messaging & Video Chat Platform",
-    description: "Connect instantly with friends and family through secure real-time messaging, video calls, and group chats.",
+    description:
+      "Connect instantly with friends and family through secure real-time messaging, video calls, and group chats.",
     images: ["/og-image.jpg"],
     creator: "@chatapp",
   },
@@ -63,9 +71,9 @@ export const metadata = {
     googleBot: {
       index: true,
       follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
     },
   },
   verification: {
@@ -78,20 +86,20 @@ export const metadata = {
   },
   category: "technology",
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
-  manifest: '/manifest.webmanifest',
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
-    title: 'ChatApp',
+    statusBarStyle: "default",
+    title: "ChatApp",
   },
 };
 
 export const viewport = {
-  themeColor: '#8B5CF6',
-  width: 'device-width',
+  themeColor: "#8B5CF6",
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
 };
@@ -117,11 +125,14 @@ export default function RootLayout({ children }) {
         <AuthProvider>
           <ToastProvider>
             <SocketProvider>
-              <NotificationProvider>
-                <UnreadCountProvider>
-                  {children}
-                </UnreadCountProvider>
-              </NotificationProvider>
+              <CallProvider>
+                <NotificationProvider>
+                  <UnreadCountProvider>
+                    {children}
+                    <CallWindow showInitiatorIfIdle={false} />
+                  </UnreadCountProvider>
+                </NotificationProvider>
+              </CallProvider>
             </SocketProvider>
           </ToastProvider>
         </AuthProvider>
