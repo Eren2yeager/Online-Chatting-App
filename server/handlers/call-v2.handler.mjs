@@ -3,6 +3,7 @@ import Call from '../../src/models/Call.mjs';
 import Message from '../../src/models/Message.mjs';
 import Notification from '../../src/models/Notification.mjs';
 import Chat from '../../src/models/Chat.mjs';
+import User from '../../src/models/User.mjs';
 
 const MAX_PARTICIPANTS = parseInt(process.env.MAX_CALL_PARTICIPANTS || '4');
 
@@ -252,6 +253,25 @@ export function registerCallHandlersV2(socket, io, userSockets) {
         }
       }
 
+      // Check blocked: initiator blocked target or target blocked initiator
+      const initiatorUser = await User.findById(socket.userId).select('blocked');
+      if (initiatorUser?.blocked?.length) {
+        const blockedIds = initiatorUser.blocked.map((b) => b.toString());
+        for (const targetId of targetUserIds) {
+          if (blockedIds.includes(String(targetId))) {
+            console.log(`❌ [CALL:INITIATE] Initiator ${socket.userId} has blocked target ${targetId}`);
+            return ack?.({ success: false, error: "You have blocked this user" });
+          }
+        }
+      }
+      for (const targetId of targetUserIds) {
+        const targetUser = await User.findById(targetId).select('blocked');
+        if (targetUser?.blocked?.some((b) => b.toString() === socket.userId)) {
+          console.log(`❌ [CALL:INITIATE] Target ${targetId} has blocked initiator ${socket.userId}`);
+          return ack?.({ success: false, error: "This user has blocked you" });
+        }
+      }
+
       // Generate unique room ID with retry logic for duplicate key errors
       let call = null;
       let attempts = 0;
@@ -339,6 +359,40 @@ export function registerCallHandlersV2(socket, io, userSockets) {
         }
       }
 
+      // 30s timeout: if call not picked, mark as missed and end call for both
+      const roomId = call.roomId;
+      setTimeout(async () => {
+        try {
+          const c = await Call.findOne({ roomId });
+          if (!c || c.status !== 'pending') return;
+          for (const p of c.participants) {
+            if (p.status === 'ringing') {
+              c.updateParticipantStatus(p.userId.toString(), 'missed');
+            }
+          }
+          c.status = 'cancelled';
+          c.endedAt = new Date();
+          await c.save();
+          await createCallNotifications(c, 'call_missed', userSockets, io);
+
+          io.to(roomId).emit('call:timeout', { roomId });
+
+          const initiatorId = c.initiator.toString();
+          const initiatorSocketId = userSockets.get(initiatorId);
+          if (initiatorSocketId) io.to(initiatorSocketId).emit('call:timeout', { roomId });
+
+          for (const p of c.participants) {
+            const pid = p.userId.toString();
+            if (pid !== initiatorId) {
+              const targetSocketId = userSockets.get(pid);
+              if (targetSocketId) io.to(targetSocketId).emit('call:timeout', { roomId });
+            }
+          }
+        } catch (e) {
+          console.error('[CALL] Timeout handler error:', e);
+        }
+      }, 30000);
+
       console.log(`✅ [CALL:INITIATE] Call initiated successfully, sending ack to ${socket.userId}`);
       ack?.({
         success: true,
@@ -420,6 +474,7 @@ export function registerCallHandlersV2(socket, io, userSockets) {
         userImage: socket.user.image,
         roomId,
         offer,
+        call: call.toObject(),
       });
       console.log(`📤 [CALL:ACCEPT] Broadcasted participant-joined to room ${roomId}`);
 

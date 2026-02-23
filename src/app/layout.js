@@ -5,7 +5,7 @@ import { ToastProvider } from "@/components/layout/ToastContext";
 import { NotificationProvider } from "@/components/layout/NotificationContext";
 import { UnreadCountProvider } from "@/components/layout/UnreadCountContext";
 import { CallProvider } from "@/contexts/CallContext";
-import { CallWindow, IncomingCallModal } from "@/components/call";
+import { CallWindow } from "@/components/call";
 import {
   getWebsiteStructuredData,
   getOrganizationStructuredData,
@@ -130,7 +130,6 @@ export default function RootLayout({ children }) {
                   <UnreadCountProvider>
                     {children}
                     <CallWindow showInitiatorIfIdle={false} />
-                    <IncomingCallModal />
                   </UnreadCountProvider>
                 </NotificationProvider>
               </CallProvider>

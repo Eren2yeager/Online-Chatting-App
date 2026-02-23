@@ -16,6 +16,8 @@ export default function ParticipantBelt({
   remoteStreams,
   isMuted,
   isVideoOff,
+  isScreenSharing,
+  screenShareStream,
   sessionUserId,
 }) {
   const selfId = sessionUserId ? String(sessionUserId) : null;
@@ -47,7 +49,7 @@ export default function ParticipantBelt({
       <div className="flex gap-2 px-2 min-w-max">
         {beltParticipants.map((p) => {
           const id = p.isLocal ? 'local' : String(p.userId);
-          const stream = p.isLocal ? localStream : remoteStreams.get(p.userId);
+          const stream = p.isLocal ? (isScreenSharing && screenShareStream ? screenShareStream : localStream) : remoteStreams.get(p.userId);
           const hasVideo = stream?.getVideoTracks?.()?.some((t) => t.enabled);
           const isMutedP = p.isLocal ? isMuted : p.isMuted ?? false;
           const isVideoOffP = p.isLocal ? isVideoOff : p.isVideoOff ?? false;
@@ -90,7 +92,7 @@ export default function ParticipantBelt({
                 </div>
               )}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
-                <p className="text-xs text-white truncate text-center font-medium">{p.name}</p>
+                <p className="text-xs text-white truncate text-center font-medium">{p.isLocal ? 'You' : p.name}</p>
               </div>
               <div className="absolute top-1 right-1 flex gap-0.5">
                 {isMutedP ? (

@@ -11,7 +11,6 @@ import {
   ChevronUpIcon,
   Bars3Icon,
   Square2StackIcon,
-  UserPlusIcon,
 } from '@heroicons/react/24/outline';
 import {
   VideoGrid,
@@ -23,6 +22,7 @@ import { useRingtone } from './useRingtone';
 import { useCallDuration } from './useCallDuration';
 import AddParticipantsModal from './AddParticipantsModal';
 import CallNavbar from './CallNavbar';
+import CallNavbarSlot from './CallNavbarSlot';
 
 const CORNERS = [
   { x: 16, y: 16, label: 'top-left' },
@@ -117,8 +117,6 @@ export default function CallWindow({
   posRef.current = pos;
 
   // Ringtones
-  useRingtone('dialing', callState === 'calling');
-  useRingtone('incoming', callState === 'ringing');
 
   // Duration tracking
   const { roomDurationFormatted, userPresenceTimeFormatted } = useCallDuration(
@@ -133,7 +131,7 @@ export default function CallWindow({
 
   useEffect(() => {
     setVisible(shouldShow);
-    if (shouldShow) setMinimized(false);
+    // Don't reset minimized when call becomes active - let user restore manually
   }, [shouldShow]);
 
   useEffect(() => {
@@ -314,13 +312,16 @@ export default function CallWindow({
     );
   }, [callState, currentCall, participantsInfo]);
 
-  const targetName = useMemo(() => {
+  const targetInfo = useMemo(() => {
     if (callState !== 'calling' || !currentCall?.participants) return null;
     const target = currentCall.participants.find(
       (p) => String(p.userId?._id || p.userId) !== session?.user?.id
     );
-    return target?.userId?.name || null;
+    if (!target) return null;
+    const u = target.userId;
+    return { name: u?.name || 'User', image: u?.image };
   }, [callState, currentCall?.participants, session?.user?.id]);
+  const targetName = targetInfo?.name ?? null;
 
   if (!visible && !showInitiatorIfIdle) return null;
 
@@ -352,23 +353,28 @@ export default function CallWindow({
 
   return (
     <>
-      {/* Minimized navbar */}
+      {/* Minimized navbar - rendered in layout slot above app navbar */}
       {minimized && callState === 'active' && (
-        <CallNavbar onRestore={() => setMinimized(false)} onEnd={handleCloseClick} />
+        <CallNavbarSlot>
+          <CallNavbar onRestore={() => setMinimized(false)} onEnd={handleCloseClick} />
+        </CallNavbarSlot>
       )}
 
-      {/* Main call window - always mounted when active to keep audio playing */}
-      {(callState === 'active' || !minimized) && (
-        <div
-          ref={containerRef}
-          className="call-window-container"
-          style={minimized ? { ...windowStyles, opacity: 0, pointerEvents: 'none', position: 'fixed', left: '-9999px' } : windowStyles}
+      {/* Main call window - when minimized, hide visually but keep mounted for audio; CallNavbar in slot shows restore */}
+      <div
+        ref={containerRef}
+        className="call-window-container"
+        style={
+          minimized
+            ? { ...windowStyles, opacity: 0, pointerEvents: 'none', position: 'fixed', left: '-9999px', visibility: 'hidden' }
+            : windowStyles
+        }
+        aria-hidden={minimized}
           role="dialog"
           aria-label={`Call window: ${headerLabel}`}
           aria-modal="true"
-          aria-hidden={minimized}
         >
-          <div className="flex flex-col h-full w-full rounded-xl shadow-2xl border border-gray-200 bg-white overflow-hidden min-w-0 min-h-0">
+          <div className="relative flex flex-col h-full w-full rounded-xl shadow-2xl border border-gray-200 bg-white overflow-hidden min-w-0 min-h-0">
             <header
               ref={dragRef}
               onMouseDown={startDrag}
@@ -384,7 +390,9 @@ export default function CallWindow({
                 <Bars3Icon className="h-5 w-5 flex-shrink-0 text-slate-300" aria-hidden />
                 <span className="text-sm font-semibold truncate">{headerLabel}</span>
                 {callState === 'active' && (
-                  <span className="text-xs text-slate-300 font-mono">{roomDurationFormatted}</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-700/80 font-mono text-xs font-medium text-emerald-300 tabular-nums">
+                    {roomDurationFormatted}
+                  </span>
                 )}
                 {offlineTargets?.length > 0 && (
                   <span className="text-xs text-amber-300 bg-amber-900/50 px-2 py-0.5 rounded">
@@ -419,6 +427,7 @@ export default function CallWindow({
                     )}
                   </button>
                 )}
+                {callState === 'active' && (
                 <button
                   type="button"
                   onClick={() => setMinimized((m) => !m)}
@@ -432,6 +441,7 @@ export default function CallWindow({
                     <ChevronDownIcon className="h-5 w-5" aria-hidden />
                   )}
                 </button>
+                )}
                 <button
                   type="button"
                   onClick={handleCloseClick}
@@ -488,27 +498,20 @@ export default function CallWindow({
 
                 {/* Duration info */}
                 {callState === 'active' && (
-                  <div className="px-3 py-1 text-xs text-gray-600 text-center border-t border-gray-200">
-                    Room: {roomDurationFormatted} • Your time: {userPresenceTimeFormatted}
+                  <div className="flex items-center justify-center gap-4 px-3 py-2 text-xs text-gray-600 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-medium text-gray-500">Room</span>
+                      <span className="font-mono font-semibold text-emerald-600 tabular-nums">{roomDurationFormatted}</span>
+                    </span>
+                    <span className="text-gray-300">|</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-medium text-gray-500">You</span>
+                      <span className="font-mono font-semibold text-blue-600 tabular-nums">{userPresenceTimeFormatted}</span>
+                    </span>
                   </div>
                 )}
 
                 <div className="flex-shrink-0 p-3 border-t border-gray-200">
-                  <div className="flex items-center justify-between mb-2">
-                    {currentCall?.type === 'group' && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddParticipants(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors text-sm"
-                        title="Add participants"
-                        aria-label="Add participants"
-                      >
-                        <UserPlusIcon className="h-4 w-4" />
-                        <span>Add</span>
-                      </button>
-                    )}
-                    <div className="flex-1" />
-                  </div>
                   <CallControls
                     callType={callType}
                     isMuted={isMuted}
@@ -521,31 +524,28 @@ export default function CallWindow({
                     onUpgradeToVideo={
                       callType === 'audio' ? () => upgradeCallType('video') : undefined
                     }
+                    showAddParticipant={
+                      currentCall?.type === 'group' || (currentCall?.participants?.length ?? 0) >= 2
+                    }
+                    onAddParticipant={() => setShowAddParticipants(true)}
                   />
                 </div>
               </main>
             )}
 
-            {callState === 'ringing' && (
-              <main className="flex-1 min-h-0 overflow-auto p-3">
+            {(callState === 'ringing' || callState === 'calling') && (
+              <main className="flex-1 min-h-0 overflow-auto p-2 flex flex-col items-center justify-center">
                 <CallStateDisplay
-                  state="ringing"
+                  state={callState}
                   callType={callType}
                   callerName={callerInfo?.name}
                   callerImage={callerInfo?.image}
+                  targetName={targetName}
+                  targetImage={targetInfo?.image}
+                  offlineTargets={offlineTargets}
+                  isFullscreen={isFullscreen}
                   onAccept={handleAccept}
                   onReject={handleReject}
-                />
-              </main>
-            )}
-
-            {callState === 'calling' && (
-              <main className="flex-1 min-h-0 overflow-auto p-3">
-                <CallStateDisplay
-                  state="calling"
-                  callType={callType}
-                  targetName={targetName}
-                  offlineTargets={offlineTargets}
                   onCancel={handleCancel}
                 />
               </main>
@@ -564,51 +564,51 @@ export default function CallWindow({
               </main>
             )}
           </div>
-        </div>
-      )}
 
-      {/* End call confirmation */}
-      {showEndConfirm && (
-        <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="end-call-title"
-          onClick={() => handleCloseConfirm(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-sm mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="end-call-title" className="text-lg font-semibold text-gray-900 mb-2">
-              End call?
-            </h2>
-            <p className="text-gray-600 text-sm mb-4">Are you sure you want to end this call?</p>
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => handleCloseConfirm(false)}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+          {/* Modals inside call window so they show in fullscreen */}
+          {showEndConfirm && (
+            <div
+              className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="end-call-title"
+              onClick={() => handleCloseConfirm(false)}
+            >
+              <div
+                className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 max-w-sm mx-4"
+                onClick={(e) => e.stopPropagation()}
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCloseConfirm(true)}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
-              >
-                End call
-              </button>
+                <h2 id="end-call-title" className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  End call?
+                </h2>
+                <p className="text-gray-600 dark:text-slate-300 text-sm mb-4">Are you sure you want to end this call?</p>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handleCloseConfirm(false)}
+                    className="px-4 py-2 rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCloseConfirm(true)}
+                    className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                  >
+                    End call
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Add participants modal */}
-      <AddParticipantsModal
-        isOpen={showAddParticipants}
-        onClose={() => setShowAddParticipants(false)}
-      />
+          <AddParticipantsModal
+            isOpen={showAddParticipants}
+            onClose={() => setShowAddParticipants(false)}
+          />
+        </div>
+        
+      
     </>
   );
 }

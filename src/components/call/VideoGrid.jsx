@@ -34,7 +34,7 @@ export default function VideoGrid({
   const selfId = sessionUserId || session?.user?.id ? String(sessionUserId || session.user.id) : null;
   const selfInfo = selfId
     ? {
-        name: session?.user?.name || 'You',
+        name: 'You',
         image: session?.user?.image,
       }
     : { name: 'You', image: null };
@@ -73,36 +73,34 @@ export default function VideoGrid({
   );
 
   const allParticipants = useMemo(() => {
-    // Use screen share stream if sharing, otherwise use local stream
     const localDisplayStream = isScreenSharing && screenShareStream ? screenShareStream : localStream;
-    const list = [
-      {
-        id: 'local',
-        userId: selfId,
-        isLocal: true,
-        name: selfInfo.name,
-        image: selfInfo.image,
-        stream: localDisplayStream,
-        isMuted,
-        isVideoOff,
-        isScreenSharing,
-      },
-      ...remoteEntries.map(([userId, stream]) => {
-        const info = getParticipantInfo(userId);
-        return {
-          id: userId,
-          userId,
-          isLocal: false,
-          name: info.name,
-          image: info.image,
-          stream,
-          isMuted: info.isMuted ?? false,
-          isVideoOff: info.isVideoOff ?? false,
-        };
-      }),
-    ];
-    return list;
-  }, [remoteEntries, selfId, selfInfo, localStream, isMuted, isVideoOff, getParticipantInfo]);
+    const localParticipant = {
+      id: 'local',
+      userId: selfId,
+      isLocal: true,
+      name: 'You',
+      image: selfInfo.image,
+      stream: localStream,
+      displayStream: localDisplayStream,
+      isMuted,
+      isVideoOff,
+      isScreenSharing,
+    };
+    const remoteList = remoteEntries.map(([userId, stream]) => {
+      const info = getParticipantInfo(userId);
+      return {
+        id: String(userId),
+        userId: String(userId),
+        isLocal: false,
+        name: info.name,
+        image: info.image,
+        stream,
+        isMuted: info.isMuted ?? false,
+        isVideoOff: info.isVideoOff ?? false,
+      };
+    });
+    return [localParticipant, ...remoteList];
+  }, [remoteEntries, selfId, selfInfo, localStream, isMuted, isVideoOff, isScreenSharing, screenShareStream, getParticipantInfo]);
 
   const defaultMainId = useMemo(() => {
     if (isDirectCall && remoteEntries.length > 0) {
@@ -120,7 +118,8 @@ export default function VideoGrid({
 
   const renderMainVideo = (participant) => {
     if (!participant) return null;
-    const hasVideo = participant.stream?.getVideoTracks?.()?.some((t) => t.enabled);
+    const stream = participant.isLocal ? (participant.displayStream ?? participant.stream) : participant.stream;
+    const hasVideo = stream?.getVideoTracks?.()?.some((t) => t.enabled);
     const showVideo = hasVideo && (!participant.isVideoOff || participant.isScreenSharing);
     const attachLocalRef = participant.isLocal && mainId === 'local' && !participant.isScreenSharing;
 
@@ -128,13 +127,12 @@ export default function VideoGrid({
       <div className="relative w-full h-full rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center">
         {showVideo ? (
           <video
-            ref={attachLocalRef ? localVideoRef : participant.isLocal ? undefined : (el) => {
+            ref={attachLocalRef ? localVideoRef : participant.isLocal ? (el) => {
+              if (el && stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
+            } : (el) => {
               if (el && participant.userId) {
                 remoteVideosRef.current.set(participant.userId, el);
-                if (participant.stream && el.srcObject !== participant.stream) {
-                  el.srcObject = participant.stream;
-                  el.play().catch(() => {});
-                }
+                if (stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
               }
             }}
             autoPlay
@@ -179,7 +177,8 @@ export default function VideoGrid({
 
   const renderCornerPreview = (participant) => {
     if (!participant) return null;
-    const hasVideo = participant.stream?.getVideoTracks?.()?.some((t) => t.enabled);
+    const stream = participant.isLocal ? (participant.displayStream ?? participant.stream) : participant.stream;
+    const hasVideo = stream?.getVideoTracks?.()?.some((t) => t.enabled);
     const showVideo = hasVideo && !participant.isVideoOff;
     const attachLocalRef = participant.isLocal && mainId !== 'local';
 
@@ -192,13 +191,12 @@ export default function VideoGrid({
       >
         {showVideo ? (
           <video
-            ref={attachLocalRef ? localVideoRef : participant.isLocal ? undefined : (el) => {
+            ref={attachLocalRef ? localVideoRef : participant.isLocal ? (el) => {
+              if (el && stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
+            } : (el) => {
               if (el && participant.userId) {
                 remoteVideosRef.current.set(participant.userId, el);
-                if (participant.stream && el.srcObject !== participant.stream) {
-                  el.srcObject = participant.stream;
-                  el.play().catch(() => {});
-                }
+                if (stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
               }
             }}
             autoPlay
@@ -255,6 +253,8 @@ export default function VideoGrid({
             remoteStreams={remoteStreams}
             isMuted={isMuted}
             isVideoOff={isVideoOff}
+            isScreenSharing={isScreenSharing}
+            screenShareStream={screenShareStream}
             sessionUserId={selfId}
           />
         )}

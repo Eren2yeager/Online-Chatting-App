@@ -23,6 +23,7 @@ export default function RootLayout({ children }) {
         <NotificationProvider>
           <NavigationProvider>
             <div className="flex flex-col h-screen">
+              <div id="call-navbar-slot" className="flex-shrink-0" />
               <Header />
               <main className="flex-1 overflow-hidden relative">
                 <MediaFullViewer />

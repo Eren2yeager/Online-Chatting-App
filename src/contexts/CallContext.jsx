@@ -513,9 +513,13 @@
      const onCancelled = () => {
        cleanupCall();
      };
+
+     const onTimeout = () => {
+       cleanupCall();
+     };
  
      const onParticipantJoined = async (data) => {
-       // Add participant info
+       if (data.call) setCurrentCall(data.call);
        const uid = String(data.userId);
        setParticipantsInfo(prev => {
          const next = new Map(prev);
@@ -660,6 +664,7 @@
 
      socket.on('call:incoming', onIncoming);
      socket.on('call:cancelled', onCancelled);
+    socket.on('call:timeout', onTimeout);
      socket.on('call:participant-joined', onParticipantJoined);
      socket.on('call:participant-left', onParticipantLeft);
      socket.on('call:participant-rejected', onParticipantRejected);
@@ -674,6 +679,7 @@
      return () => {
        socket.off('call:incoming', onIncoming);
        socket.off('call:cancelled', onCancelled);
+      socket.off('call:timeout', onTimeout);
        socket.off('call:participant-joined', onParticipantJoined);
        socket.off('call:participant-left', onParticipantLeft);
        socket.off('call:participant-rejected', onParticipantRejected);

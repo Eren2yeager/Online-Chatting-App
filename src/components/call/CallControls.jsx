@@ -4,6 +4,7 @@ import {
   PhoneIcon,
   VideoCameraIcon,
   ComputerDesktopIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/outline';
 import { Mic, MicOff, VideoOff } from 'lucide-react';
 
@@ -17,6 +18,8 @@ export default function CallControls({
   onToggleScreenShare,
   onLeaveCall,
   onUpgradeToVideo,
+  showAddParticipant = false,
+  onAddParticipant,
 }) {
   return (
     <div
@@ -90,7 +93,33 @@ export default function CallControls({
           >
             <ComputerDesktopIcon className="h-5 w-5" aria-hidden />
           </button>
+
+          {showAddParticipant && onAddParticipant && (
+            <button
+              type="button"
+              onClick={onAddParticipant}
+              className="flex items-center justify-center gap-2 p-3 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+              title="Add participants"
+              aria-label="Add participants"
+            >
+              <UserPlusIcon className="h-5 w-5" aria-hidden />
+              <span className="text-sm font-medium hidden sm:inline">Add</span>
+            </button>
+          )}
         </>
+      )}
+
+      {showAddParticipant && onAddParticipant && callType === 'audio' && (
+        <button
+          type="button"
+          onClick={onAddParticipant}
+          className="flex items-center justify-center gap-2 p-3 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+          title="Add participants"
+          aria-label="Add participants"
+        >
+          <UserPlusIcon className="h-5 w-5" aria-hidden />
+          <span className="text-sm font-medium hidden sm:inline">Add</span>
+        </button>
       )}
 
       <button

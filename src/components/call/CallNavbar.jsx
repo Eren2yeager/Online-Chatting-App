@@ -41,7 +41,7 @@ export default function CallNavbar({ onRestore, onEnd }) {
   if (callState !== 'active') return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-lg border-b border-slate-600">
+    <div className="w-full bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-lg border-b border-slate-600 flex-shrink-0">
       <div className="flex items-center justify-between px-4 py-2.5">
         {/* Left: Call info */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
