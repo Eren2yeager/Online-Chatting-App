@@ -4,7 +4,11 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import Loader from "@/components/ui/Loader";
+
+// WebGL aurora — load only on client (uses window/canvas)
+const Aurora = dynamic(() => import("@/components/Aurora"), { ssr: false });
 
 export default function HomePage() {
   const { data: session, status } = useSession();
@@ -68,8 +72,9 @@ export default function HomePage() {
       ),
       title: "Real-time Messaging",
       description: "Instant message delivery with WebSocket technology",
-      gradient: "from-blue-500 to-cyan-500",
-      bgGlow: "bg-blue-500/10",
+      gradient: "from-blue-400 to-cyan-400",
+      iconColor: "text-blue-300",
+      borderHover: "hover:border-blue-400/50",
     },
     {
       icon: (
@@ -89,8 +94,9 @@ export default function HomePage() {
       ),
       title: "Secure & Private",
       description: "Google OAuth authentication with encrypted data",
-      gradient: "from-purple-500 to-pink-500",
-      bgGlow: "bg-purple-500/10",
+      gradient: "from-purple-400 to-pink-400",
+      iconColor: "text-purple-300",
+      borderHover: "hover:border-purple-400/50",
     },
     {
       icon: (
@@ -110,63 +116,34 @@ export default function HomePage() {
       ),
       title: "Media Sharing",
       description: "Share images and audio files seamlessly",
-      gradient: "from-emerald-500 to-teal-500",
-      bgGlow: "bg-emerald-500/10",
+      gradient: "from-emerald-400 to-teal-400",
+      iconColor: "text-emerald-300",
+      borderHover: "hover:border-emerald-400/50",
     },
   ];
 
   return (
     <div
       suppressHydrationWarning
-      className="relative min-h-screen overflow-hidden bg-gradient-to-b from-red-300 via-pink-100 to-blue-100"
+      className="relative min-h-screen overflow-hidden bg-slate-950"
     >
-      {/* Animated background elements */}
+      {/* Aurora WebGL background — vibrant neon palette on near-black base.
+          Color stops chosen to harmonize with the heading + CTA gradient
+          (purple → pink → cyan) and the per-feature icon tints. */}
       <div
         suppressHydrationWarning
         className="absolute inset-0 overflow-hidden pointer-events-none"
       >
-        <motion.div
-          initial={false}
-          animate={{
-            scale: [1, 1.2, 1],
-            rotate: [0, 90, 0],
-            opacity: [0.4, 0.6, 0.4],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-purple-400/30 via-pink-400/30 to-transparent rounded-full blur-3xl will-change-transform"
+        <Aurora
+          colorStops={["#7C3AED", "#EC4899", "#22D3EE"]}
+          amplitude={1.8}
+          blend={1.2}
+          speed={1.0}
         />
-        <motion.div
-          initial={false}
-          animate={{
-            scale: [1.2, 1, 1.2],
-            rotate: [90, 0, 90],
-            opacity: [0.4, 0.6, 0.4],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-blue-400/30 via-cyan-400/30 to-transparent rounded-full blur-3xl will-change-transform"
-        />
-        <motion.div
-          initial={false}
-          animate={{
-            scale: [1, 1.3, 1],
-            rotate: [180, 270, 180],
-            opacity: [0.3, 0.5, 0.3],
-          }}
-          transition={{
-            duration: 25,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          className="absolute top-1/4 right-1/4 w-96 h-96 bg-gradient-to-br from-indigo-400/25 to-transparent rounded-full blur-3xl will-change-transform"
-        />
+        {/* Vignette + dark gradient overlay so foreground text stays legible
+            regardless of where the aurora peaks */}
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/10 to-slate-950/60" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(2,6,23,0.25)_100%)]" />
       </div>
 
       {/* Content */}
@@ -179,40 +156,51 @@ export default function HomePage() {
         <div className="max-w-7xl w-full">
           {/* Hero Section */}
           <div className="text-center mb-16 lg:mb-20">
+            <motion.div
+              variants={itemVariants}
+              className="inline-flex items-center gap-2 px-4 py-1.5 mb-6 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-sm text-white/80"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Live with v3.0 — Audio & Video Calling
+            </motion.div>
 
+            <img 
+              src="/transparent.png"
+              alt="Hero Image"
+              className="mx-auto mb-8 rounded-3xl size-25 shadow-2xl"
+            />
 
             <motion.h1
               variants={itemVariants}
-              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 via-purple-900 to-gray-900 leading-tight"
+              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl  font-extrabold mb-6 leading-tight"
             >
-              Connect Instantly,
+              <span className="text-white">Connect Instantly,</span>
               <br />
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600">
+              <span className="bg-clip-text text-transparent font-extrabold bg-gradient-to-r from-violet-400 via-pink-400 to-cyan-400">
                 Chat Effortlessly
               </span>
             </motion.h1>
 
             <motion.p
               variants={itemVariants}
-              className="text-base sm:text-lg md:text-xl text-gray-700 max-w-3xl mx-auto mb-10 leading-relaxed px-4"
+              className="text-base sm:text-md  text-white/70 max-w-3xl mx-auto mb-10 leading-relaxed px-4"
             >
-              Experience real-time messaging with a modern, secure, and
-              beautiful interface. Connect with friends, share media, and enjoy
+              Connect with friends, share media, and enjoy
               seamless conversations powered by cutting-edge technology.
             </motion.p>
 
             <motion.div
               variants={itemVariants}
-              className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+              className="flex flex-row gap-4 justify-center items-center"
             >
               <motion.button
                 whileHover={{
                   scale: 1.05,
-                  boxShadow: "0 0 30px rgba(168, 85, 247, 0.4)",
+                  boxShadow: "0 0 40px rgba(236, 72, 153, 0.5)",
                 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => router.push("/signin")}
-                className="group relative px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold text-lg shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 transition-all duration-300 overflow-hidden"
+                className="group relative px-4 sm:px-6 py-4 bg-gradient-to-r from-violet-500 via-pink-500 to-cyan-500 text-white rounded-xl font-semibold text-sm sm:text-lg shadow-2xl shadow-pink-500/30 transition-all duration-300 overflow-hidden"
               >
                 <span className="relative z-10 flex items-center gap-2">
                   Get Started
@@ -230,13 +218,12 @@ export default function HomePage() {
                     />
                   </svg>
                 </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </motion.button>
 
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="px-8 py-4 bg-white backdrop-blur-sm border border-purple-200 text-purple-700 rounded-xl font-semibold text-lg hover:bg-purple-50 transition-all duration-300"
+                className="p-4 bg-white/5 backdrop-blur-md border border-white/20 text-white rounded-xl font-semibold text-sm sm:text-lg hover:bg-white/10 hover:border-white/30 transition-all duration-300"
               >
                 Learn More
               </motion.button>
@@ -256,54 +243,32 @@ export default function HomePage() {
                 className="group relative"
               >
                 <div
-                  className="absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl -z-10"
+                  className="absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-30 transition-opacity duration-500 blur-xl -z-10"
                   style={{
                     background: `linear-gradient(to right, ${feature.gradient})`,
                   }}
                 />
 
-                <div className="relative h-full bg-white/80 backdrop-blur-md rounded-2xl p-6 lg:p-8 border border-purple-100 hover:border-purple-200 transition-all duration-300">
+                <div
+                  className={`relative h-full bg-white/5 backdrop-blur-xl rounded-2xl p-6 lg:p-8 border border-white/10 ${feature.borderHover} transition-all duration-300`}
+                >
                   <div
                     className={`w-14 h-14 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center mb-5 text-white shadow-lg group-hover:scale-110 transition-transform duration-300`}
                   >
                     {feature.icon}
                   </div>
 
-                  <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-600 group-hover:to-pink-600 transition-all duration-300">
+                  <h3 className="text-lg font-bold text-white mb-3 group-hover:bg-clip-text   group-hover:from-white group-hover:to-white/80 transition-all duration-300">
                     {feature.title}
                   </h3>
 
-                  <p className="text-gray-600 leading-relaxed">
+                  <p className="text-white/60 leading-relaxed">
                     {feature.description}
                   </p>
                 </div>
               </motion.div>
             ))}
           </motion.div>
-
-          {/* Stats Section */}
-          {/* <motion.div
-            variants={itemVariants}
-            className="mt-16 lg:mt-20 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto"
-          >
-            {[
-              { value: "10K+", label: "Active Users" },
-              { value: "1M+", label: "Messages Sent" },
-              { value: "99.9%", label: "Uptime" },
-              { value: "24/7", label: "Support" },
-            ].map((stat, index) => (
-              <motion.div
-                key={index}
-                whileHover={{ scale: 1.05 }}
-                className="text-center p-6 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100"
-              >
-                <div className="text-3xl lg:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
-                  {stat.value}
-                </div>
-                <div className="text-gray-600 text-sm">{stat.label}</div>
-              </motion.div>
-            ))}
-          </motion.div> */}
         </div>
       </motion.div>
     </div>

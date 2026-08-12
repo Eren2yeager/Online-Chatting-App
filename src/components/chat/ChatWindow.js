@@ -616,7 +616,6 @@ export default function ChatWindow({
           )}
         </div>
       </div>
-
       {/* Messages Area */}
       <div
         ref={messagesContainerRef}

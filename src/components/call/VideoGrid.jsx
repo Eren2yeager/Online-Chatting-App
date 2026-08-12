@@ -34,9 +34,9 @@ export default function VideoGrid({
   const selfId = sessionUserId || session?.user?.id ? String(sessionUserId || session.user.id) : null;
   const selfInfo = selfId
     ? {
-        name: 'You',
-        image: session?.user?.image,
-      }
+      name: 'You',
+      image: session?.user?.image,
+    }
     : { name: 'You', image: null };
 
   const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
@@ -50,7 +50,7 @@ export default function VideoGrid({
       if (localVideoRef.current.srcObject !== localStream) {
         localVideoRef.current.srcObject = localStream;
       }
-      localVideoRef.current.play().catch(() => {});
+      localVideoRef.current.play().catch(() => { });
     }
   }, [localStream, isVideoOff, localVideoRef]);
 
@@ -59,7 +59,7 @@ export default function VideoGrid({
       const el = remoteVideosRef.current.get(userId);
       if (el && el.srcObject !== stream) {
         el.srcObject = stream;
-        el.play().catch(() => {});
+        el.play().catch(() => { });
       }
     });
   }, [remoteStreams]);
@@ -121,18 +121,23 @@ export default function VideoGrid({
     const stream = participant.isLocal ? (participant.displayStream ?? participant.stream) : participant.stream;
     const hasVideo = stream?.getVideoTracks?.()?.some((t) => t.enabled);
     const showVideo = hasVideo && (!participant.isVideoOff || participant.isScreenSharing);
-    const attachLocalRef = participant.isLocal && mainId === 'local' && !participant.isScreenSharing;
 
     return (
       <div className="relative w-full h-full rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center">
         {showVideo ? (
           <video
-            ref={attachLocalRef ? localVideoRef : participant.isLocal ? (el) => {
-              if (el && stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
+            ref={participant.isLocal ? (el) => {
+              // Keep localVideoRef in sync so PiP works, then always assign localStream
+              localVideoRef.current = el;
+              if (el && localStream && el.srcObject !== localStream) {
+                el.srcObject = localStream;
+                el.play().catch(() => { });
+              }
             } : (el) => {
+              // Remote participant in main slot
               if (el && participant.userId) {
                 remoteVideosRef.current.set(participant.userId, el);
-                if (stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
+                if (stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => { }); }
               }
             }}
             autoPlay
@@ -180,7 +185,6 @@ export default function VideoGrid({
     const stream = participant.isLocal ? (participant.displayStream ?? participant.stream) : participant.stream;
     const hasVideo = stream?.getVideoTracks?.()?.some((t) => t.enabled);
     const showVideo = hasVideo && !participant.isVideoOff;
-    const attachLocalRef = participant.isLocal && mainId !== 'local';
 
     return (
       <button
@@ -191,12 +195,21 @@ export default function VideoGrid({
       >
         {showVideo ? (
           <video
-            ref={attachLocalRef ? localVideoRef : participant.isLocal ? (el) => {
-              if (el && stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
+            ref={participant.isLocal ? (el) => {
+              // *** FIX: Always use a callback ref for local corner slot.
+              // Keep localVideoRef.current in sync (needed for PiP), then
+              // explicitly assign localStream so the correct stream is shown
+              // in the "YOU" slot regardless of re-render timing.
+              localVideoRef.current = el;
+              if (el && localStream && el.srcObject !== localStream) {
+                el.srcObject = localStream;
+                el.play().catch(() => { });
+              }
             } : (el) => {
+              // Remote participant in corner slot
               if (el && participant.userId) {
                 remoteVideosRef.current.set(participant.userId, el);
-                if (stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => {}); }
+                if (stream && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => { }); }
               }
             }}
             autoPlay
